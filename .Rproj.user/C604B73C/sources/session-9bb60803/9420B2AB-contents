@@ -1,0 +1,74 @@
+# Load required library
+library(WGCNA)
+options(stringsAsFactors = FALSE)
+allowWGCNAThreads()
+
+# Transpose expression data: samples as rows, genes as columns
+datExpr <- t(expr_matrix)  # expr_matrix: genes × samples
+
+# STEP 1: Check for good samples and genes
+gsg <- goodSamplesGenes(datExpr, verbose = 3)
+if (!gsg$allOK) {
+  datExpr <- datExpr[gsg$goodSamples, gsg$goodGenes]
+}
+
+# STEP 2: Sample clustering to check for outliers
+sampleTree <- hclust(dist(datExpr), method = "average")
+plot(sampleTree, main = "Sample Clustering to Detect Outliers", sub="", xlab="", cex.lab = 1.5)
+
+# OPTIONAL: remove outliers if needed
+# cutHeight <- 150
+# clust <- cutreeStatic(sampleTree, cutHeight = cutHeight, minSize = 10)
+# keepSamples <- (clust == 1)
+# datExpr <- datExpr[keepSamples, ]
+
+# STEP 3: Prepare phenotype data
+# Ensure rownames match datExpr rows
+traitData <- pheno_data
+rownames(traitData) <- traitData$SampleName
+traitData <- traitData[rownames(datExpr), , drop = FALSE]
+datTraits <- as.data.frame(traitData$Condition)
+# colnames(datTraits) <- "Condition"
+
+# STEP 4: Run blockwiseModules
+net <- blockwiseModules(datExpr,
+                        power = 8,                 # Adjust if needed
+                        TOMType = "unsigned",      # Can be "signed" or "unsigned"
+                        minModuleSize = 30,
+                        reassignThreshold = 0,
+                        mergeCutHeight = 0.25,
+                        numericLabels = TRUE,
+                        pamRespectsDendro = FALSE,
+                        saveTOMs = TRUE,
+                        saveTOMFileBase = "TOM",
+                        verbose = 3)
+
+# STEP 5: Convert numeric labels to colors
+moduleColors <- labels2colors(net$colors)
+
+# Plot gene dendrogram and module colors
+plotDendroAndColors(net$dendrograms[[1]], moduleColors[net$blockGenes[[1]]],
+                    "Module Colors", dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05)
+
+# STEP 6: Relate modules to traits (phenotype)
+MEs <- net$MEs
+moduleTraitCor <- cor(MEs, datTraits, use = "p")
+moduleTraitPvalue <- corPvalueStudent(moduleTraitCor, nSamples = nrow(datExpr))
+
+# STEP 7: Plot heatmap of module-trait relationships
+textMatrix <- paste(signif(moduleTraitCor, 2), "\n(",
+                    signif(moduleTraitPvalue, 1), ")", sep = "")
+dim(textMatrix) <- dim(moduleTraitCor)
+
+labeledHeatmap(Matrix = moduleTraitCor,
+               xLabels = names(datTraits),
+               yLabels = names(MEs),
+               ySymbols = names(MEs),
+               colorLabels = FALSE,
+               colors = blueWhiteRed(50),
+               textMatrix = textMatrix,
+               setStdMargins = FALSE,
+               cex.text = 0.7,
+               zlim = c(-1,1),
+               main = "Module-Trait Relationships")
