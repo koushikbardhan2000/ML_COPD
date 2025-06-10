@@ -251,6 +251,9 @@ library(sva)
 
 # Batch correction
 batch_corrected <- ComBat(dat = as.matrix(expr_log2_norm), batch = pheno_hnVScopd$phenotype, par.prior = TRUE)
+write.csv(batch_corrected, "output/batch_corrected.csv")
+head(batch_corrected[1:5, 1:5])
+batch_corrected <- read.csv("output/batch_corrected.csv", row.names = 1)
 
 
 #############################
