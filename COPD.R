@@ -348,7 +348,45 @@ pheatmap(expr_top_degs,
 # DGEA ends
 #############
 
+############################
+# Pearson correlation starts
+############################
 
+# Compute Pearson correlation between samples
+cor_matrix <- cor(batch_corrected, method = "pearson")
+cor_matrix_genes <- cor(t(batch_corrected), method = "pearson")
+
+# Load and plot
+library(pheatmap)
+# Save to PNG
+png("temp/sample_correlation_heatmap.png", width = 1200, height = 1000, res = 150)
+pheatmap::pheatmap(cor_matrix,
+         main = "Sample Correlation Heatmap (Pearson)",
+         clustering_distance_rows = "correlation",
+         clustering_distance_cols = "correlation",
+         display_numbers = FALSE,
+         show_rownames = FALSE,
+         show_colnames = FALSE)
+dev.off()
+
+annotation_col <- data.frame(
+  Condition = pheno_hnVScopd$phenotype
+)
+rownames(annotation_col) <- colnames(cor_matrix)
+# Save to PNG
+png("temp/sample_annotated_correlation_heatmap.png", width = 1200, height = 1000, res = 150)
+pheatmap::pheatmap(cor_matrix,
+         annotation_col = annotation_col,
+         main = "Sample Correlation with Condition",
+         clustering_distance_rows = "correlation",
+         clustering_distance_cols = "correlation",
+         display_numbers = FALSE,
+         show_rownames = FALSE,
+         show_colnames = FALSE)
+dev.off()
+############################
+# Pearson correlation ends
+############################
 
 ##############
 # LASSO starts
