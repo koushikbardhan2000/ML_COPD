@@ -75,8 +75,8 @@ final_annotated_data_unique$Gene.Symbol <- NULL
 final_annotated_data_unique$cleaned_names <- NULL
 
 dim(final_annotated_data_unique)
-write.csv(final_annotated_data_unique,"output/final_annotated_data_unique.csv")
-final_annotated_data_unique <- read.csv("output/final_annotated_data_unique.csv", row.names = 1)
+# write.csv(final_annotated_data_unique,"output/final_annotated_data_unique.csv")
+# final_annotated_data_unique <- read.csv("output/final_annotated_data_unique.csv", row.names = 1)
 head(final_annotated_data_unique[1:5, 1:5])
 
 
@@ -533,3 +533,123 @@ png("temp/temp_AUROC_SVM.png", width = 1200, height = 1000, res = 150)
 plot(svm_roc_obj, col = "red", lwd = 2, main = "ROC Curve - SVM")
 abline(a = 0, b = 1, lty = 2, col = "gray")
 dev.off()
+
+
+# # List of required packages
+# required_packages <- c("caret", "pROC", "e1071", "glmnet", "xgboost", 
+#                        "ggplot2", "dplyr", "tibble", "forcats", "tidyr")
+
+# # Install missing packages
+# new_packages <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
+# if(length(new_packages)) install.packages(new_packages)
+
+# # Load all required packages
+# lapply(required_packages, require, character.only = TRUE)
+
+
+###############
+# Logistic Regression
+###############
+library(caret)
+library(pROC)
+
+# Fit logistic regression model
+glm_model <- glm(phenotype ~ ., data = rf_df[, c(best_genes, "phenotype")], family = binomial)
+
+# Predict class probabilities and labels
+glm_prob <- predict(glm_model, rf_df[, best_genes], type = "response")
+glm_pred <- factor(ifelse(glm_prob > 0.5, "Smoker with COPD", "Healthy Non-Smoker"), 
+                   levels = levels(rf_df$phenotype))
+
+# Evaluate
+conf_glm <- confusionMatrix(glm_pred, rf_df$phenotype, positive = "Smoker with COPD")
+print(conf_glm)
+
+# Extract performance
+acc_glm <- conf_glm$overall["Accuracy"]
+sens_glm <- conf_glm$byClass["Sensitivity"]
+spec_glm <- conf_glm$byClass["Specificity"]
+f1_glm   <- conf_glm$byClass["F1"]
+
+# AUROC
+glm_roc <- roc(y_true_bin, glm_prob)
+auc_glm <- auc(glm_roc)
+
+# Output
+cat("Logistic Regression Results:\n")
+cat("Accuracy   :", round(acc_glm, 4), "\n")
+cat("Sensitivity:", round(sens_glm, 4), "\n")
+cat("Specificity:", round(spec_glm, 4), "\n")
+cat("F1 Score   :", round(f1_glm, 4), "\n")
+cat("AUROC      :", round(auc_glm, 4), "\n")
+
+# Plot
+png("temp/temp_AUROC_GLM.png", width = 1200, height = 1000, res = 150)
+plot(glm_roc, col = "red", lwd = 2, main = "ROC Curve - Logistic Regression")
+abline(a = 0, b = 1, lty = 2, col = "gray")
+dev.off()
+
+
+
+###############
+# XGBoost
+###############
+# Load necessary libraries
+library(xgboost)
+library(caret)
+library(pROC)
+
+# Prepare data
+xgb_df <- rf_df[, c(best_genes, "phenotype")]
+xgb_df$phenotype <- factor(ifelse(xgb_df$phenotype == "Smoker with COPD", "COPD", "Healthy"))
+
+# Ensure phenotype has two levels: "Healthy", "COPD" (required for twoClassSummary)
+xgb_df$phenotype <- factor(xgb_df$phenotype, levels = c("Healthy", "COPD"))
+
+# Set up trainControl with ROC summary
+ctrl <- trainControl(method = "repeatedcv",
+                     number = 10,
+                     repeats = 5,
+                     classProbs = TRUE,
+                     summaryFunction = twoClassSummary,
+                     savePredictions = "final")
+
+# Train XGBoost using caret
+set.seed(123)
+xgb_model <- train(phenotype ~ ., data = xgb_df, method = "xgbTree",
+                   trControl = ctrl, metric = "ROC")
+
+# Predictions
+xgb_pred <- predict(xgb_model, xgb_df[, best_genes])
+xgb_prob <- predict(xgb_model, xgb_df[, best_genes], type = "prob")[, "COPD"]
+
+# Confusion Matrix
+conf_xgb <- confusionMatrix(xgb_pred, xgb_df$phenotype, positive = "COPD")
+print(conf_xgb)
+
+# Extract metrics
+acc_xgb <- conf_xgb$overall["Accuracy"]
+sens_xgb <- conf_xgb$byClass["Sensitivity"]
+spec_xgb <- conf_xgb$byClass["Specificity"]
+f1_xgb   <- conf_xgb$byClass["F1"]
+
+# AUROC
+xgb_roc <- roc(response = ifelse(xgb_df$phenotype == "COPD", 1, 0), predictor = xgb_prob)
+auc_xgb <- auc(xgb_roc)
+
+# Print performance
+cat("XGBoost Results:\n")
+cat("Accuracy   :", round(acc_xgb, 4), "\n")
+cat("Sensitivity:", round(sens_xgb, 4), "\n")
+cat("Specificity:", round(spec_xgb, 4), "\n")
+cat("F1 Score   :", round(f1_xgb, 4), "\n")
+cat("AUROC      :", round(auc_xgb, 4), "\n")
+
+# Save ROC Plot
+png("temp/temp_AUROC_XGB.png", width = 1200, height = 1000, res = 150)
+plot(xgb_roc, col = "darkorange", lwd = 2, main = "ROC Curve - XGBoost")
+abline(a = 0, b = 1, lty = 2, col = "gray")
+dev.off()
+
+
+
