@@ -487,3 +487,49 @@ png("temp/temp_AUROC_RF.png", width = 1200, height = 1000, res = 150)
 plot(roc_obj, col = "blue", lwd = 2, main = "ROC Curve - Random Forest")
 abline(a = 0, b = 1, lty = 2, col = "gray")
 dev.off()
+
+
+
+###############
+# SVM Model
+###############
+
+# Prepare data for SVM
+svm_df <- rf_df[, c(best_genes, "phenotype")]
+svm_df$phenotype <- factor(svm_df$phenotype, levels = c("Healthy Non-Smoker", "Smoker with COPD"))
+
+# Train SVM model with radial kernel
+svm_model <- svm(phenotype ~ ., data = svm_df, kernel = "radial", probability = TRUE)
+
+# Predict on training data
+svm_pred <- predict(svm_model, svm_df[, best_genes])
+svm_prob <- attr(predict(svm_model, svm_df[, best_genes], probability = TRUE), "probabilities")
+
+# Confusion Matrix
+svm_conf <- confusionMatrix(svm_pred, svm_df$phenotype, positive = "Smoker with COPD")
+print(svm_conf)
+
+# Extract metrics
+svm_accuracy     <- svm_conf$overall["Accuracy"]
+svm_sensitivity  <- svm_conf$byClass["Sensitivity"]
+svm_specificity  <- svm_conf$byClass["Specificity"]
+svm_f1_score     <- svm_conf$byClass["F1"]
+
+# Print metrics
+cat("\n=== SVM Performance ===\n")
+cat("Accuracy   :", round(svm_accuracy, 4), "\n")
+cat("Sensitivity:", round(svm_sensitivity, 4), "\n")
+cat("Specificity:", round(svm_specificity, 4), "\n")
+cat("F1 Score   :", round(svm_f1_score, 4), "\n")
+
+# AUROC Calculation
+svm_prob_copd <- svm_prob[, "Smoker with COPD"]
+svm_roc_obj <- roc(y_true_bin, svm_prob_copd)
+svm_auc <- auc(svm_roc_obj)
+cat("AUROC      :", round(svm_auc, 4), "\n")
+
+# Plot ROC curve
+png("temp/temp_AUROC_SVM.png", width = 1200, height = 1000, res = 150)
+plot(svm_roc_obj, col = "red", lwd = 2, main = "ROC Curve - SVM")
+abline(a = 0, b = 1, lty = 2, col = "gray")
+dev.off()
