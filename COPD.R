@@ -393,9 +393,9 @@ selected_genes <- selected_genes[!selected_genes %in% "(Intercept)"]
 # Expression matrix with selected genes
 lasso_expr <- x[, selected_genes]
 
-##############
+###############
 # Random Forest
-##############
+###############
 
 # Convert phenotype to factor with two levels
 rf_df <- data.frame(lasso_expr, phenotype = factor(y))
@@ -414,11 +414,12 @@ for (i in n_vars) {
 }
 
 # Plot error rate vs number of variables
+png("temp/temp_error_rate_vs_genes.png", width = 1200, height = 1000, res = 150)
 plot(n_vars, error_rates, type = "b", col = "darkgreen", 
      xlab = "Number of Top LASSO-selected Genes",
      ylab = "Random Forest Error Rate",
      main = "Error Rate vs. Number of Genes")
-
+dev.off()
 # Optional: Identify minimum error configuration
 min_error_index <- which.min(error_rates)
 cat("Minimum error rate:", error_rates[min_error_index], "using", min_error_index, "genes.\n")
@@ -441,3 +442,48 @@ ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 5)
 rf_cv <- train(phenotype ~ ., data = rf_df[, c(best_genes, "phenotype")],
                method = "rf", trControl = ctrl)
 print(rf_cv)
+
+
+
+# performancs evaluation
+library(caret)
+library(pROC)
+library(e1071)
+
+# Predict on the training data using the final model
+rf_pred <- predict(final_rf, rf_df[, best_genes])
+rf_prob <- predict(final_rf, rf_df[, best_genes], type = "prob")
+
+# Create confusion matrix
+conf_mat <- confusionMatrix(rf_pred, rf_df$phenotype, positive = "Smoker with COPD")
+print(conf_mat)
+
+# Extract metrics
+accuracy     <- conf_mat$overall["Accuracy"]
+sensitivity  <- conf_mat$byClass["Sensitivity"]
+specificity  <- conf_mat$byClass["Specificity"]
+f1_score     <- conf_mat$byClass["F1"]
+
+# Print metrics
+cat("Accuracy   :", round(accuracy, 4), "\n")
+cat("Sensitivity:", round(sensitivity, 4), "\n")
+cat("Specificity:", round(specificity, 4), "\n")
+cat("F1 Score   :", round(f1_score, 4), "\n")
+
+# Compute AUROC (needs numeric predictions)
+# Create binary vector for true class
+y_true_bin <- ifelse(rf_df$phenotype == "Smoker with COPD", 1, 0)
+
+# Probabilities for the positive class
+rf_prob_copd <- rf_prob[, "Smoker with COPD"]
+
+# AUROC
+roc_obj <- roc(y_true_bin, rf_prob_copd)
+auc_score <- auc(roc_obj)
+cat("AUROC      :", round(auc_score, 4), "\n")
+
+# Plot ROC curve
+png("temp/temp_AUROC_RF.png", width = 1200, height = 1000, res = 150)
+plot(roc_obj, col = "blue", lwd = 2, main = "ROC Curve - Random Forest")
+abline(a = 0, b = 1, lty = 2, col = "gray")
+dev.off()
