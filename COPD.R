@@ -653,3 +653,119 @@ dev.off()
 
 
 
+###############
+# Dependencies
+###############
+# packages <- c("caret", "pROC", "e1071", "glmnet", "xgboost", "ggplot2", "dplyr", "tibble", "forcats", "tidyr")
+# installed <- packages %in% rownames(installed.packages())
+# if (any(!installed)) install.packages(packages[!installed])
+
+# Load libraries
+library(caret)
+library(pROC)
+library(e1071)
+library(glmnet)
+library(xgboost)
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(forcats)
+library(tidyr)
+
+#####################
+# Input Preprocessing
+#####################
+
+# Assuming `rf_df` and `best_genes` are already available in environment
+
+x_data <- rf_df[, best_genes]
+y_data <- rf_df$phenotype
+
+# Ensure phenotype labels match caret requirements
+y_data <- factor(y_data)
+levels(y_data) <- make.names(levels(y_data))  # e.g., "Healthy.Non.Smoker", "Smoker.with.COPD"
+
+########################
+# Train ML Models
+########################
+
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 5,
+                     classProbs = TRUE, summaryFunction = twoClassSummary,
+                     savePredictions = "final")
+
+models <- list()
+
+set.seed(123)
+models$RF <- train(x = x_data, y = y_data, method = "rf", trControl = ctrl, metric = "ROC")
+
+set.seed(123)
+models$SVM <- train(x = x_data, y = y_data, method = "svmRadial", trControl = ctrl, metric = "ROC")
+
+set.seed(123)
+models$LogReg <- train(x = x_data, y = y_data, method = "glm", family = "binomial", trControl = ctrl, metric = "ROC")
+
+set.seed(123)
+models$XGB <- train(x = x_data, y = y_data, method = "xgbTree", trControl = ctrl, metric = "ROC")
+
+########################
+# Collect Performance Metrics
+########################
+
+results <- data.frame(Model = character(), Accuracy = numeric(), Sensitivity = numeric(),
+                      Specificity = numeric(), F1 = numeric(), AUROC = numeric())
+
+for (model_name in names(models)) {
+  model <- models[[model_name]]
+  preds <- model$pred
+
+  # Filter predictions by best tune parameters if available
+  if (!is.null(model$bestTune)) {
+    for (param in names(model$bestTune)) {
+      preds <- preds[preds[[param]] == model$bestTune[[param]], ]
+    }
+  }
+
+  pred_labels <- preds$pred
+  true_labels <- preds$obs
+  prob_copd <- preds$Smoker.with.COPD
+
+  cm <- confusionMatrix(pred_labels, true_labels, positive = "Smoker.with.COPD")
+
+  if (length(unique(true_labels)) == 2) {
+    roc_obj <- roc(response = true_labels, predictor = prob_copd,
+                   levels = c("Healthy.Non.Smoker", "Smoker.with.COPD"), direction = "<")
+    auc_val <- auc(roc_obj)
+  } else {
+    auc_val <- NA
+  }
+
+  results <- rbind(results, data.frame(
+    Model = model_name,
+    Accuracy = cm$overall["Accuracy"],
+    Sensitivity = cm$byClass["Sensitivity"],
+    Specificity = cm$byClass["Specificity"],
+    F1 = cm$byClass["F1"],
+    AUROC = as.numeric(auc_val)
+  ))
+}
+
+########################
+# Plot Performance Metrics
+########################
+
+results_long <- results %>%
+  pivot_longer(-Model, names_to = "Metric", values_to = "Score")
+
+p <- ggplot(results_long, aes(x = fct_reorder(Model, Score), y = Score, fill = Model)) +
+  geom_bar(stat = "identity", position = position_dodge(), width = 0.7) +
+  facet_wrap(~Metric, scales = "free_y") +
+  theme_minimal(base_size = 14) +
+  labs(title = "Performance Comparison of ML Models",
+       x = "Model", y = "Score") +
+  scale_fill_brewer(palette = "Set2") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(p)
+
+# Save plot
+ggsave("temp/integrated_model_comparison.png", plot = p, width = 12, height = 8, dpi = 300)
