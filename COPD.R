@@ -59,25 +59,28 @@ soft <- as.data.frame(soft[,c(1,11)])
 # Merge gene symbols from soft into final_merged_data based on ID
 final_annotated_data <- merge(soft, final_merged_data, by = "ID")
 
+final_annotated_data$cleaned_names <- sub(" ///.*", "", final_annotated_data$Gene.Symbol)
 
 # Remove rows with duplicated Gene.Symbols, keeping the first occurrence
-final_annotated_data_unique <- final_annotated_data[!duplicated(final_annotated_data$Gene.Symbol) & 
-                                                      !is.na(final_annotated_data$Gene.Symbol), ]
+final_annotated_data_unique <- final_annotated_data[!duplicated(final_annotated_data$cleaned_names) & 
+                                                      !is.na(final_annotated_data$cleaned_names), ]
 
 
 # Assign 'ID' column as rownames
-rownames(final_annotated_data_unique) <- final_annotated_data_unique$Gene.Symbol
+rownames(final_annotated_data_unique) <- final_annotated_data_unique$cleaned_names
 
 # Drop the 'ID' column
 final_annotated_data_unique$ID <- NULL
 final_annotated_data_unique$Gene.Symbol <- NULL
+final_annotated_data_unique$cleaned_names <- NULL
 
 dim(final_annotated_data_unique)
-# write.csv(final_annotated_data_unique,"output/final_annotated_data_unique.csv")
+write.csv(final_annotated_data_unique,"output/final_annotated_data_unique.csv")
+final_annotated_data_unique <- read.csv("output/final_annotated_data_unique.csv", row.names = 1)
+head(final_annotated_data_unique[1:5, 1:5])
 
 
-
-# Load phenotype data
+# Preprocessing phenotype data
 # Load required libraries
 library(GEOquery)
 library(Biobase)
@@ -259,3 +262,182 @@ batch_corrected <- read.csv("output/batch_corrected.csv", row.names = 1)
 #############################
 # Batch effect removal done
 #############################
+
+
+
+#############
+# DGEA starts
+#############
+
+# Load required packages
+library(limma)
+library(ggplot2)
+library(ggrepel)
+library(ggfortify)
+
+# STEP 1: Log2 transform and normalize expression data
+# expr_log2 <- log2(expr_hnVScopd + 1)
+# expr_norm <- normalizeBetweenArrays(expr_log2, method = "quantile")
+keepSamples <- pheno_hnVScopd$GSM_IDs
+batch_corrected <- batch_corrected[,keepSamples]
+# STEP 2: Prepare phenotype and design matrix
+group <- factor(pheno_hnVScopd$phenotype)
+design <- model.matrix(~ 0 + group)
+colnames(design) <- make.names(levels(group))  # syntactically valid
+
+# STEP 3: Linear model and contrasts
+fit <- lmFit(batch_corrected, design)
+contrast_matrix <- makeContrasts(SmokerwithCOPD_vs_Healthy = Smoker.with.COPD - Healthy.Non.Smoker, levels = design)
+fit2 <- contrasts.fit(fit, contrast_matrix)
+fit2 <- eBayes(fit2)
+
+# STEP 4: Get DEGs
+deg_table <- topTable(fit2, number = Inf, adjust.method = "BH")
+deg_table$Gene <- rownames(deg_table)
+
+# STEP 5: Volcano Plot
+deg_table$Significance <- "Not Significant"
+deg_table$Significance[deg_table$logFC > 1 & deg_table$adj.P.Val < 0.05] <- "Upregulated"
+deg_table$Significance[deg_table$logFC < -1 & deg_table$adj.P.Val < 0.05] <- "Downregulated"
+
+ggplot(deg_table, aes(x = logFC, y = -log10(adj.P.Val), color = Significance)) +
+  geom_point(alpha = 0.7) +
+  scale_color_manual(values = c("Upregulated" = "red", "Downregulated" = "blue", "Not Significant" = "gray")) +
+  theme_minimal() +
+  labs(title = "Volcano Plot: Smoker with COPD vs Healthy Non-Smoker",
+       x = "Log2 Fold Change",
+       y = "-Log10 Adjusted P-Value") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# STEP 6: PCA Plot
+pca_data <- t(batch_corrected)  # transpose to samples x genes
+autoplot(prcomp(pca_data, scale. = TRUE),
+         data = pheno_hnVScopd,
+         colour = 'phenotype',
+         shape = 'phenotype') +
+  theme_minimal() +
+  ggtitle("PCA Plot: Samples by Phenotype")
+
+
+
+# Load package
+library(pheatmap)
+
+# STEP 1: Select top 50 DEGs by adjusted p-value
+top_degs <- deg_table[order(deg_table$adj.P.Val), ][1:50, ]
+top_gene_ids <- top_degs$Gene
+
+# STEP 2: Extract expression data for top DEGs
+expr_top_degs <- batch_corrected[top_gene_ids, ]
+
+# STEP 3: Prepare annotation for columns (samples)
+annotation_col <- data.frame(Phenotype = pheno_hnVScopd$phenotype)
+rownames(annotation_col) <- colnames(expr_top_degs)
+
+# STEP 4: Generate heatmap
+pheatmap(expr_top_degs,
+         annotation_col = annotation_col,
+         scale = "row",                    # z-score normalization by row
+         clustering_distance_rows = "euclidean",
+         clustering_distance_cols = "euclidean",
+         clustering_method = "complete",
+         color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+         main = "Top 50 DEGs Heatmap: Smoker with COPD vs Healthy Non-Smoker")
+
+#############
+# DGEA ends
+#############
+
+
+
+##############
+# LASSO starts
+##############
+# Install if not already installed
+# packages <- c("glmnet", "randomForest", "caret", "doParallel")
+# installed <- packages %in% rownames(installed.packages())
+# if (any(!installed)) install.packages(packages[!installed])
+
+# Load required libraries
+library(glmnet)
+library(randomForest)
+library(caret)
+library(doParallel)
+
+
+# Transpose expression data for glmnet (samples x genes)
+x <- t(batch_corrected)
+y <- factor(pheno_hnVScopd$phenotype)
+
+# Binary classification: 0 = Healthy Non-Smoker, 1 = Smoker with COPD
+y_bin <- ifelse(y == "Smoker with COPD", 1, 0)
+
+# Standardize features
+x_scaled <- scale(x)
+
+# Create cross-validation folds
+set.seed(123)
+cv_lasso <- cv.glmnet(x_scaled, y_bin, alpha = 1, family = "binomial", nfolds = 10)
+
+# Plot CV results
+plot(cv_lasso)
+
+# Best lambda
+best_lambda <- 0.05
+
+# Coefficients at best lambda
+lasso_coef <- coef(cv_lasso, s = best_lambda)
+selected_genes <- rownames(lasso_coef)[lasso_coef[, 1] != 0]
+selected_genes <- selected_genes[!selected_genes %in% "(Intercept)"]
+
+# Expression matrix with selected genes
+lasso_expr <- x[, selected_genes]
+
+##############
+# Random Forest
+##############
+
+# Convert phenotype to factor with two levels
+rf_df <- data.frame(lasso_expr, phenotype = factor(y))
+
+# Set up repeated RF modeling
+set.seed(123)
+n_vars <- 1:length(selected_genes)
+error_rates <- numeric(length(n_vars))
+
+for (i in n_vars) {
+  rf_model <- randomForest(phenotype ~ ., 
+                           data = rf_df[, c(1:i, ncol(rf_df))],
+                           ntree = 500,
+                           importance = TRUE)
+  error_rates[i] <- 1 - rf_model$confusion["Smoker with COPD", "Smoker with COPD"] / sum(rf_model$confusion["Smoker with COPD", ])
+}
+
+# Plot error rate vs number of variables
+plot(n_vars, error_rates, type = "b", col = "darkgreen", 
+     xlab = "Number of Top LASSO-selected Genes",
+     ylab = "Random Forest Error Rate",
+     main = "Error Rate vs. Number of Genes")
+
+# Optional: Identify minimum error configuration
+min_error_index <- which.min(error_rates)
+cat("Minimum error rate:", error_rates[min_error_index], "using", min_error_index, "genes.\n")
+
+
+# Train final model with optimal number of genes
+best_genes <- selected_genes[1:min_error_index]
+final_rf <- randomForest(phenotype ~ ., 
+                         data = rf_df[, c(best_genes, "phenotype")],
+                         ntree = 500,
+                         importance = TRUE)
+
+# Plot variable importance
+varImpPlot(final_rf, type = 1, main = "Top Gene Importance (MeanDecreaseAccuracy)")
+
+
+library(caret)
+
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 5)
+rf_cv <- train(phenotype ~ ., data = rf_df[, c(best_genes, "phenotype")],
+               method = "rf", trControl = ctrl)
+print(rf_cv)
