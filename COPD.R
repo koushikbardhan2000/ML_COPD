@@ -227,7 +227,7 @@ pheno_hnVScopd <- pheno_hnVScopd[match(colnames(expr_hnVScopd), pheno_hnVScopd$G
 # Create a sample group mapping
 sample_groups <- data.frame(
   SampleID = colnames(expr_hnVScopd),
-  Group = c(rep("HN", 161), rep("COPD", 92))  # Adjust based on your actual group sizes
+  Group = factor(pheno_hnVScopd$phenotype) #c(rep("HN", 161), rep("COPD", 92))  # Adjust based on your actual group sizes
 )
 # Extract gene symbols
 gene_symbols <- sapply(strsplit(rownames(expr_hnVScopd), " /// "), `[`, 1)
@@ -276,17 +276,17 @@ library(ggrepel)
 library(ggfortify)
 
 # STEP 1: Log2 transform and normalize expression data
-# expr_log2 <- log2(expr_hnVScopd + 1)
-# expr_norm <- normalizeBetweenArrays(expr_log2, method = "quantile")
-keepSamples <- pheno_hnVScopd$GSM_IDs
-batch_corrected <- batch_corrected[,keepSamples]
+expr_log2 <- log2(expr_hnVScopd + 1)
+expr_norm <- normalizeBetweenArrays(expr_log2, method = "quantile")
+# keepSamples <- pheno_hnVScopd$GSM_IDs
+# batch_corrected <- batch_corrected[,keepSamples]
 # STEP 2: Prepare phenotype and design matrix
 group <- factor(pheno_hnVScopd$phenotype)
 design <- model.matrix(~ 0 + group)
 colnames(design) <- make.names(levels(group))  # syntactically valid
 
 # STEP 3: Linear model and contrasts
-fit <- lmFit(batch_corrected, design)
+fit <- lmFit(expr_norm, design)
 contrast_matrix <- makeContrasts(SmokerwithCOPD_vs_Healthy = Smoker.with.COPD - Healthy.Non.Smoker, levels = design)
 fit2 <- contrasts.fit(fit, contrast_matrix)
 fit2 <- eBayes(fit2)
@@ -294,12 +294,17 @@ fit2 <- eBayes(fit2)
 # STEP 4: Get DEGs
 deg_table <- topTable(fit2, number = Inf, adjust.method = "BH")
 deg_table$Gene <- rownames(deg_table)
-
+head(deg_table[1:5, 1:5])
+length(deg_table$Gene)
 # STEP 5: Volcano Plot
 deg_table$Significance <- "Not Significant"
 deg_table$Significance[deg_table$logFC > 1 & deg_table$adj.P.Val < 0.05] <- "Upregulated"
 deg_table$Significance[deg_table$logFC < -1 & deg_table$adj.P.Val < 0.05] <- "Downregulated"
+cat("Total No. of DEGs: ", sum(deg_table$Significance == "Upregulated") + sum(deg_table$Significance == "Downregulated"), "\n",
+    "Upregulated: ", sum(deg_table$Significance == "Upregulated"), "\n",
+    "Downregulated: ", sum(deg_table$Significance == "Downregulated"), "\n")
 
+png("temp/temp_volcano_plot.png", width = 1200, height = 1000, res = 150)
 ggplot(deg_table, aes(x = logFC, y = -log10(adj.P.Val), color = Significance)) +
   geom_point(alpha = 0.7) +
   scale_color_manual(values = c("Upregulated" = "red", "Downregulated" = "blue", "Not Significant" = "gray")) +
@@ -308,12 +313,12 @@ ggplot(deg_table, aes(x = logFC, y = -log10(adj.P.Val), color = Significance)) +
        x = "Log2 Fold Change",
        y = "-Log10 Adjusted P-Value") +
   theme(plot.title = element_text(hjust = 0.5))
-
+dev.off()
 # STEP 6: PCA Plot
 pca_data <- t(batch_corrected)  # transpose to samples x genes
 autoplot(prcomp(pca_data, scale. = TRUE),
          data = pheno_hnVScopd,
-         colour = 'phenotype',
+         colour = 'GSE_ID',
          shape = 'phenotype') +
   theme_minimal() +
   ggtitle("PCA Plot: Samples by Phenotype")
@@ -807,3 +812,98 @@ print(p)
 
 # Save plot
 ggsave("temp/integrated_model_comparison.png", plot = p, width = 12, height = 8, dpi = 300)
+
+####################################
+# Network Centrality Analysis starts
+####################################
+
+# install.packages("igraph")
+# install.packages("CINNA")
+
+library(igraph)
+library(CINNA)
+
+# Load the PPI data
+ppi <- read.delim("temp/string_interactions_short.tsv", header = TRUE, sep = "\t")
+colnames(ppi)
+
+# Create an igraph object from the edge list
+ppi_graph <- graph_from_data_frame(ppi[, c("X.node1", "node2")], directed = FALSE)
+
+
+# Extract the largest connected component (giant component)
+components <- clusters(ppi_graph)
+giant_component <- induced_subgraph(ppi_graph, which(components$membership == which.max(components$csize)))
+
+
+# Identify available centrality measures for the network
+available_measures <- proper_centralities(giant_component)
+
+# Calculate centralities for all valid measures
+centrality_scores <- calculate_centralities(giant_component)
+
+# Filter out zero-length centrality vectors
+centrality_scores_clean_list <- centrality_scores[sapply(centrality_scores, function(x) length(x) > 0)]
+
+# Convert remaining valid ones to data frame
+centrality_df <- as.data.frame(centrality_scores_clean_list)
+
+
+# Remove columns with NA values
+centrality_df_clean <- centrality_df[, colSums(is.na(centrality_df)) == 0]
+
+# Load library
+if (!require("factoextra")) install.packages("factoextra")
+library(factoextra)
+
+# Perform PCA
+pca_res <- prcomp(centrality_df_clean, scale. = TRUE)
+
+# Plot variable contributions
+fviz_pca_var(pca_res, col.var = "contrib", repel = TRUE, axes = c(1, 2))
+
+# Get top contributing measure
+var_contrib <- get_pca_var(pca_res)$contrib
+mean_contrib <- rowMeans(var_contrib[, 1:2])
+top_5_measure <- names(sort(mean_contrib, decreasing = TRUE)[1:5])
+cat("Top 5 contributing centrality:", top_measure, "\n")
+top_measure <- names(sort(mean_contrib, decreasing = TRUE)[1])
+
+# Extract and filter hub genes (HUB genes not identified in this step)
+# Print column names
+# colnames(centrality_df_clean)
+
+# # Print the top_measure value
+# print(top_measure)
+
+# top_scores <- centrality_df_clean[[top_measure]]
+# # Define 90th percentile cutoff
+# quantile_cutoff <- quantile(top_scores, 0.9)
+# # Select top 10%
+# hub_genes <- names(top_scores[top_scores >= quantile_cutoff])
+# # Output
+# print(hub_genes)
+# write.table(hub_genes, "hub_genes.txt", row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+
+# Top 20 genes ranked from centrality measures were saved as CSV files in the temp directory
+# these files are generated by cytoscape using the cytohubban plugin and starts with "20"
+# Merge top 20 genes from each centrality measure
+top20 <- list.files("temp/", pattern = ".csv", full.names = T)
+top20 <- top20[1:5]
+
+merged_data <- lapply(top20, function(file) {
+  df <- read.csv(file, header = TRUE)
+  df
+})
+
+final_merged_data <- Reduce(function(x, y) merge(x, y, by = "Name", all = TRUE), merged_data)
+final_merged_data <- final_merged_data[!is.na(final_merged_data$Rank.x),]
+final_merged_data <- final_merged_data[!is.na(final_merged_data$Score),]
+dim(final_merged_data)
+# Save the final merged data to a CSV file
+write.csv(final_merged_data$Name, "temp/listofHubGenes.csv", row.names = FALSE, quote = FALSE)
+
+##################################
+# Network Centrality Analysis Ends
+##################################

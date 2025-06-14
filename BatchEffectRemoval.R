@@ -35,7 +35,7 @@ fit2 <- eBayes(fit2)
 topTable(fit2, adjust="fdr", number=20)
 
 
-pca <- prcomp(t(expr_hnVScopd_log), scale. = TRUE)
+pca <- prcomp(t(batch_corrected), scale. = TRUE)
 plot(pca$x[,1:2], col=as.factor(sample_groups$Group), pch=16)
 
 
