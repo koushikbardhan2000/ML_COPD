@@ -445,7 +445,7 @@ rf_df <- data.frame(lasso_expr, phenotype = factor(y))
 
 # Set up repeated RF modeling
 set.seed(123)
-n_vars <- 1:length(selected_genes)
+n_vars <- seq_along(selected_genes) # 1:length(selected_genes)
 error_rates <- numeric(length(n_vars))
 
 for (i in n_vars) {
