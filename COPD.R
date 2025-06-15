@@ -253,10 +253,47 @@ expr_log2_norm <- normalizeBetweenArrays(expr_hnVScopd_log, method = "quantile")
 library(sva)
 
 # Batch correction
-batch_corrected <- ComBat(dat = as.matrix(expr_log2_norm), batch = pheno_hnVScopd$phenotype, par.prior = TRUE)
-write.csv(batch_corrected, "output/batch_corrected.csv")
+batch_corrected <- ComBat(dat = as.matrix(expr_log2_norm), batch = pheno_hnVScopd$GSE_ID, par.prior = TRUE)
+# write.csv(batch_corrected, "output/batch_corrected.csv")
 head(batch_corrected[1:5, 1:5])
 batch_corrected <- read.csv("output/batch_corrected.csv", row.names = 1)
+
+# PCA Plot before normalization
+library(ggplot2)
+library(ggfortify)
+pca_data <- t(expr_hnVScopd)  # transpose to samples x genes
+pca_plot <- autoplot(prcomp(pca_data, scale. = TRUE),
+         data = pheno_hnVScopd,
+         colour = 'GSE_ID',
+         shape = 'phenotype') +
+  theme_minimal() +
+  ggtitle("PCA Plot: Samples by Phenotype")
+ggsave("temp/temp_PCA_beforeNormalization.png", plot = pca_plot, width = 8, height = 8, dpi = 300)
+
+# PCA Plot before batch effect removal
+library(ggplot2)
+library(ggfortify)
+pca_data <- t(expr_log2_norm)  # transpose to samples x genes
+pca_plot <- autoplot(prcomp(pca_data, scale. = TRUE),
+         data = pheno_hnVScopd,
+         colour = 'GSE_ID',
+         shape = 'phenotype') +
+  theme_minimal() +
+  ggtitle("PCA Plot: Samples by Phenotype")
+ggsave("temp/temp_PCA_beforeBatchCorrectionWithlogNormalized.png", plot = pca_plot, width = 8, height = 8, dpi = 300)
+
+# PCA Plot After batch effect removal
+library(ggplot2)
+library(ggfortify)
+pca_data <- t(batch_corrected)  # transpose to samples x genes
+pca_plot <- autoplot(prcomp(pca_data, scale. = TRUE),
+         data = pheno_hnVScopd,
+         colour = 'GSE_ID',
+         shape = 'phenotype') +
+  theme_minimal() +
+  ggtitle("PCA Plot: Samples by Phenotype")
+ggsave("temp/temp_PCA_afterBatchCorrection.png", plot = pca_plot, width = 8, height = 8, dpi = 300)
+
 
 
 #############################
@@ -314,15 +351,6 @@ ggplot(deg_table, aes(x = logFC, y = -log10(adj.P.Val), color = Significance)) +
        y = "-Log10 Adjusted P-Value") +
   theme(plot.title = element_text(hjust = 0.5))
 dev.off()
-# STEP 6: PCA Plot
-pca_data <- t(batch_corrected)  # transpose to samples x genes
-autoplot(prcomp(pca_data, scale. = TRUE),
-         data = pheno_hnVScopd,
-         colour = 'GSE_ID',
-         shape = 'phenotype') +
-  theme_minimal() +
-  ggtitle("PCA Plot: Samples by Phenotype")
-
 
 
 # Load package
@@ -340,15 +368,19 @@ annotation_col <- data.frame(Phenotype = pheno_hnVScopd$phenotype)
 rownames(annotation_col) <- colnames(expr_top_degs)
 
 # STEP 4: Generate heatmap
+library(pheatmap)
+# Save to PNG
+png("temp/temp_Heatmap_top_50_DEGs.png", width = 4000, height = 4000, res = 300)
 pheatmap(expr_top_degs,
          annotation_col = annotation_col,
          scale = "row",                    # z-score normalization by row
-         clustering_distance_rows = "euclidean",
-         clustering_distance_cols = "euclidean",
+         clustering_distance_rows = "correlation",
+         clustering_distance_cols = "correlation",
          clustering_method = "complete",
+         show_colnames = FALSE,
          color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
          main = "Top 50 DEGs Heatmap: Smoker with COPD vs Healthy Non-Smoker")
-
+dev.off()
 #############
 # DGEA ends
 #############
@@ -359,7 +391,7 @@ pheatmap(expr_top_degs,
 
 # Compute Pearson correlation between samples
 cor_matrix <- cor(batch_corrected, method = "pearson")
-cor_matrix_genes <- cor(t(batch_corrected), method = "pearson")
+# cor_matrix_genes <- cor(t(batch_corrected), method = "pearson")
 
 # Load and plot
 library(pheatmap)
@@ -407,10 +439,20 @@ library(randomForest)
 library(caret)
 library(doParallel)
 
+# STEP 1: Select top 50 DEGs by adjusted p-value
+top_degs <- deg_table[deg_table$Significance != "Not Significant", ]
+top_gene_ids <- top_degs$Gene
+
+# STEP 2: Extract expression data for top DEGs
+expr_top_degs <- batch_corrected_pheno_hnVScopd[top_gene_ids, ]
 
 # Transpose expression data for glmnet (samples x genes)
-x <- t(batch_corrected)
+x <- t(expr_top_degs)
 y <- factor(pheno_hnVScopd$phenotype)
+
+# # Transpose expression data for glmnet (samples x genes)
+# x <- t(batch_corrected)
+# y <- factor(pheno_hnVScopd$phenotype)
 
 # Binary classification: 0 = Healthy Non-Smoker, 1 = Smoker with COPD
 y_bin <- ifelse(y == "Smoker with COPD", 1, 0)
@@ -423,10 +465,19 @@ set.seed(123)
 cv_lasso <- cv.glmnet(x_scaled, y_bin, alpha = 1, family = "binomial", nfolds = 10)
 
 # Plot CV results
+png("temp/temp_LASSO_CV_plot1.png", width = 1200, height = 1200, res = 150)
 plot(cv_lasso)
+dev.off()
 
+# Fit LASSO model (alpha = 1 means LASSO)
+lasso_fit <- glmnet(x_scaled, y_bin, alpha = 1, family = "binomial")
+
+# Plot coefficient profiles
+png("temp/temp_LASSO_Coefficient_Profiles1.png", width = 1200, height = 1200, res = 150)
+plot(lasso_fit, xvar = "lambda", label = TRUE, lwd = 1.5)
+dev.off()
 # Best lambda
-best_lambda <- 0.05
+best_lambda <- cv_lasso$lambda.min
 
 # Coefficients at best lambda
 lasso_coef <- coef(cv_lasso, s = best_lambda)
@@ -457,7 +508,7 @@ for (i in n_vars) {
 }
 
 # Plot error rate vs number of variables
-png("temp/temp_error_rate_vs_genes.png", width = 1200, height = 1000, res = 150)
+png("temp/temp_error_rate_vs_genes1.png", width = 1200, height = 1200, res = 150)
 plot(n_vars, error_rates, type = "b", col = "darkgreen", 
      xlab = "Number of Top LASSO-selected Genes",
      ylab = "Random Forest Error Rate",
@@ -526,7 +577,7 @@ auc_score <- auc(roc_obj)
 cat("AUROC      :", round(auc_score, 4), "\n")
 
 # Plot ROC curve
-png("temp/temp_AUROC_RF.png", width = 1200, height = 1000, res = 150)
+png("temp/temp_AUROC_RF1.png", width = 1200, height = 1200, res = 150)
 plot(roc_obj, col = "blue", lwd = 2, main = "ROC Curve - Random Forest")
 abline(a = 0, b = 1, lty = 2, col = "gray")
 dev.off()
@@ -572,7 +623,7 @@ svm_auc <- auc(svm_roc_obj)
 cat("AUROC      :", round(svm_auc, 4), "\n")
 
 # Plot ROC curve
-png("temp/temp_AUROC_SVM.png", width = 1200, height = 1000, res = 150)
+png("temp/temp_AUROC_SVM1.png", width = 1200, height = 1200, res = 150)
 plot(svm_roc_obj, col = "red", lwd = 2, main = "ROC Curve - SVM")
 abline(a = 0, b = 1, lty = 2, col = "gray")
 dev.off()
@@ -627,8 +678,8 @@ cat("F1 Score   :", round(f1_glm, 4), "\n")
 cat("AUROC      :", round(auc_glm, 4), "\n")
 
 # Plot
-png("temp/temp_AUROC_GLM.png", width = 1200, height = 1000, res = 150)
-plot(glm_roc, col = "red", lwd = 2, main = "ROC Curve - Logistic Regression")
+png("temp/temp_AUROC_GLM1.png", width = 1200, height = 1200, res = 150)
+plot(glm_roc, col = "green", lwd = 2, main = "ROC Curve - Logistic Regression")
 abline(a = 0, b = 1, lty = 2, col = "gray")
 dev.off()
 
@@ -689,7 +740,7 @@ cat("F1 Score   :", round(f1_xgb, 4), "\n")
 cat("AUROC      :", round(auc_xgb, 4), "\n")
 
 # Save ROC Plot
-png("temp/temp_AUROC_XGB.png", width = 1200, height = 1000, res = 150)
+png("temp/temp_AUROC_XGB1.png", width = 1200, height = 1200, res = 150)
 plot(xgb_roc, col = "darkorange", lwd = 2, main = "ROC Curve - XGBoost")
 abline(a = 0, b = 1, lty = 2, col = "gray")
 dev.off()
@@ -811,7 +862,7 @@ p <- ggplot(results_long, aes(x = fct_reorder(Model, Score), y = Score, fill = M
 print(p)
 
 # Save plot
-ggsave("temp/integrated_model_comparison.png", plot = p, width = 12, height = 8, dpi = 300)
+ggsave("temp/temp_integrated_model_comparison1.png", plot = p, width = 12, height = 12, dpi = 300)
 
 ####################################
 # Network Centrality Analysis starts

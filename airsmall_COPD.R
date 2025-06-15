@@ -75,7 +75,7 @@ final_annotated_data_unique$Gene.Symbol <- NULL
 final_annotated_data_unique$cleaned_names <- NULL
 
 dim(final_annotated_data_unique)
-                                        # write.csv(final_annotated_data_unique,"output/final_annotated_data_unique.csv")
+# write.csv(final_annotated_data_unique,"output/final_annotated_data_unique.csv")
 # final_annotated_data_unique <- read.csv("output/final_annotated_data_unique.csv", row.names = 1)
 head(final_annotated_data_unique[1:5, 1:5])
 
@@ -141,13 +141,13 @@ all_annotated_samples$tissuetype <- case_when(
    grepl("Lung", all_annotated_samples$title, ignore.case = TRUE) ~ "small_airways",
    TRUE ~ "Unknown"
 )
-write.csv(all_annotated_samples, "airsmall_output/intermidiate/all_annotated_samples.csv", row.names = TRUE)
+# write.csv(all_annotated_samples, "airsmall_output/intermidiate/all_annotated_samples.csv", row.names = TRUE)
 # View result
 # View(all_annotated_samples)
 
 # List of Unknown samples
 Unknown <- data.frame(all_annotated_samples[all_annotated_samples$phenotype == "Unknown" | all_annotated_samples$tissuetype != "small_airways", ])
-write.csv(Unknown, "airsmall_output/intermidiate/Samples_removed.csv", row.names = T)
+# write.csv(Unknown, "airsmall_output/intermidiate/Samples_removed.csv", row.names = T)
 
 # Overview of phenotype and tissuetype distribution before cleaning
 table(all_annotated_samples$phenotype)
@@ -166,7 +166,7 @@ table(all_annotated_samples_clean$phenotype)
 table(all_annotated_samples_clean$tissuetype)
 length(all_annotated_samples_clean$title)
 
-write.csv(all_annotated_samples_clean, "airsmall_output/intermidiate/all_annotated_samples_clean.csv", row.names = TRUE)
+# write.csv(all_annotated_samples_clean, "airsmall_output/intermidiate/all_annotated_samples_clean.csv", row.names = TRUE)
 
 all_annotated_samples_withIDs <- data.frame("GSM_IDs" = row.names(all_annotated_samples_clean), all_annotated_samples_clean)
 
@@ -190,7 +190,7 @@ row.names(all_annotated_samples_withIDs_unique_sorted) <- seq_len(nrow(all_annot
 # Final phenotype dataframe
 phenotype <- all_annotated_samples_withIDs_unique_sorted[, c(1, 2, 4)]
 # table(phenotype$phenotype)
-write.csv(phenotype, "airsmall_output/final/phenotype_final.csv", row.names = F)
+# write.csv(phenotype, "airsmall_output/final/phenotype_final.csv", row.names = F)
 
 
 
@@ -207,7 +207,7 @@ table(phenotype_sorted$phenotype)
 
 # 3. Reorder the columns of expression data to match sorted phenotype
 filtered_expression <- filtered_expression[, phenotype_sorted$GSM_IDs]
-write.csv(filtered_expression,"airsmall_output/final/expression_final.csv")
+# write.csv(filtered_expression,"airsmall_output/final/expression_final.csv")
 
 # Subset GSM IDs by phenotype group
 hn_ids <- phenotype_sorted$GSM_IDs[phenotype_sorted$phenotype == "Healthy Non-Smoker"]
@@ -221,11 +221,11 @@ expr_copd <- filtered_expression[, copd_ids]
 
 # Healthy vs COPD expression matrix
 expr_hnVScopd <- filtered_expression[,c(hn_ids,copd_ids)]
-write.csv(expr_hnVScopd,"airsmall_output/final/expr_hnVScopd.csv")
+# write.csv(expr_hnVScopd,"airsmall_output/final/expr_hnVScopd.csv")
 
 # Smoker vs COPD expression matrix
 expr_smokerVScopd <- filtered_expression[,c(smoker_ids,copd_ids)]
-write.csv(expr_smokerVScopd,"airsmall_output/final/expr_smokerVScopd.csv")
+# write.csv(expr_smokerVScopd,"airsmall_output/final/expr_smokerVScopd.csv")
 
 
 # Healthy vs COPD phenotype
@@ -233,14 +233,14 @@ write.csv(expr_smokerVScopd,"airsmall_output/final/expr_smokerVScopd.csv")
 pheno_hnVScopd <- phenotype_sorted[phenotype_sorted$GSM_IDs %in% colnames(expr_hnVScopd), ]
 # Ensure phenotype vector matches the column order
 pheno_hnVScopd <- pheno_hnVScopd[match(colnames(expr_hnVScopd), pheno_hnVScopd$GSM_IDs), ]
-write.csv(pheno_hnVScopd,"airsmall_output/final/pheno_hnVScopd.csv")
+# write.csv(pheno_hnVScopd,"airsmall_output/final/pheno_hnVScopd.csv")
 
 # Smoker vs COPD phenotype
 # Subset phenotype information for the selected samples
 pheno_smokerVScopd <- phenotype_sorted[phenotype_sorted$GSM_IDs %in% colnames(expr_smokerVScopd), ]
 # Ensure phenotype vector matches the column order
 pheno_smokerVScopd <- pheno_smokerVScopd[match(colnames(expr_smokerVScopd), pheno_smokerVScopd$GSM_IDs), ]
-write.csv(pheno_hnVScopd,"airsmall_output/final/pheno_smokerVScopd.csv")
+# write.csv(pheno_hnVScopd,"airsmall_output/final/pheno_smokerVScopd.csv")
 
 #####################
 # Pre-processing end
@@ -287,17 +287,10 @@ pca_plot <- autoplot(prcomp(pca_data, scale. = TRUE),
 ggsave("airsmall_output/intermidiate/PCA_afterBatchCorrection.png", plot = pca_plot, width = 8, height = 8, dpi = 300)
 
 # Create a sample group mapping
-sample_groups <- data.frame(
-  SampleID = pheno_hnVScopd$GSM_IDs,
-  Group = factor(pheno_hnVScopd$phenotype) #c(rep("HN", 161), rep("COPD", 92))  # Adjust based on your actual group sizes
-)
-# Extract gene symbols
-gene_symbols <- rownames(expr_hnVScopd)
-
-
-# Subset the expression matrix and assign new rownames
-expr_hnVScopd <- expr_hnVScopd[valid, ]
-rownames(expr_hnVScopd) <- gene_symbols[valid]
+# sample_groups <- data.frame(
+#   SampleID = pheno_hnVScopd$GSM_IDs,
+#   Group = factor(pheno_hnVScopd$phenotype) #c(rep("HN", 161), rep("COPD", 92))  # Adjust based on your actual group sizes
+# )
 
 
 # log normalization
@@ -314,9 +307,9 @@ library(sva)
 
 # Batch correction
 batch_corrected <- ComBat(dat = as.matrix(expr_log2_norm), batch = pheno_hnVScopd$GSE_ID, par.prior = TRUE)
-write.csv(batch_corrected, "output/batch_corrected.csv")
+# write.csv(batch_corrected, "output/batch_corrected.csv")
 head(batch_corrected[1:5, 1:5])
-batch_corrected <- read.csv("output/batch_corrected.csv", row.names = 1)
+# batch_corrected <- read.csv("output/batch_corrected.csv", row.names = 1)
 
 
 #############################
@@ -366,9 +359,9 @@ cat("Total No. of DEGs: ", sum(deg_table$Significance == "Upregulated") + sum(de
 
 
 
-write.csv(deg_table, "airsmall_output/final/DEG_table_full.csv", row.names = FALSE)
-write.csv(deg_table[deg_table$Significance == "Upregulated", ], "airsmall_output/final/DEG_table_Upregulated.csv", row.names = FALSE)
-write.csv(deg_table[deg_table$Significance == "Downregulated", ], "airsmall_output/final/DEG_table_Downregulated.csv", row.names = FALSE)
+# write.csv(deg_table, "airsmall_output/final/DEG_table_full.csv", row.names = FALSE)
+# write.csv(deg_table[deg_table$Significance == "Upregulated", ], "airsmall_output/final/DEG_table_Upregulated.csv", row.names = FALSE)
+# write.csv(deg_table[deg_table$Significance == "Downregulated", ], "airsmall_output/final/DEG_table_Downregulated.csv", row.names = FALSE)
 # Generate & Save Volcano plot
 png("airsmall_output/final/Volcano_plot.png", width = 2000, height = 2000, res = 300)
 ggplot(deg_table, aes(x = logFC, y = -log10(adj.P.Val), color = Significance)) +
@@ -401,12 +394,13 @@ png("airsmall_output/final/Heatmap_plot.png", width = 4000, height = 4000, res =
 pheatmap(expr_top_degs,
          annotation_col = annotation_col,
          scale = "row",                    # z-score normalization by row
-         clustering_distance_rows = "euclidean",
-         clustering_distance_cols = "euclidean",
-         clustering_method = "complete",
+         clustering_distance_rows = "correlation",
+         clustering_distance_cols = "correlation",
+         clustering_method = "average",
          show_colnames = FALSE,
          color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
-         main = "Top 50 DEGs Heatmap: Smoker with COPD vs Healthy Non-Smoker")
+        #  main = "Top 50 DEGs Heatmap: Smoker with COPD vs Healthy Non-Smoker"
+        )
 dev.off()
 #############
 # DGEA ends
@@ -970,7 +964,7 @@ final_merged_data <- final_merged_data[!is.na(final_merged_data$Rank.x),]
 final_merged_data <- final_merged_data[!is.na(final_merged_data$Score),]
 dim(final_merged_data)
 # Save the final merged data to a CSV file
-write.csv(final_merged_data$Name, "temp/listofHubGenes.csv", row.names = FALSE, quote = FALSE)
+# write.csv(final_merged_data$Name, "temp/listofHubGenes.csv", row.names = FALSE, quote = FALSE)
 
 ##################################
 # Network Centrality Analysis Ends

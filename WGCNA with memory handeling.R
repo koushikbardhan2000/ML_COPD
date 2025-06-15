@@ -14,19 +14,19 @@ if (!gsg$allOK) {
 
 # STEP 2: Sample clustering to detect outliers
 sampleTree <- hclust(dist(datExpr), method = "average")
-png("output/sample_clustering.png", width = 6000, height = 2500, res = 300)
-plot(sampleTree, main = "Sample Clustering to Detect Outliers", sub = "", xlab = "", cex.lab = 1, cex = 0.5)
+png("temp/temp_WGCNA_clustering1.png", width = 6000, height = 2500, res = 300)
+plot(sampleTree, main = "Clustering to Detect Outliers", sub = "", xlab = "", cex.lab = 1, cex = 0.5)
 dev.off()
 
 # STEP 2.1: Remove known outliers
-outliers_to_remove <- c("GSM349915", "GSM252799", "GSM924946", "GSM196992")
+outliers_to_remove <- c("GSM434064", "GSM252840", "GSM252867", "GSM190152")
 keepSamples <- !(rownames(datExpr) %in% outliers_to_remove)
 datExpr_clean <- datExpr[keepSamples, ]
 pheno_hnVScopd_clean <- pheno_hnVScopd[keepSamples, ]
 
 # STEP 2.2: Re-check sample clustering after outlier removal
 sampleTree2 <- hclust(dist(datExpr_clean), method = "average")
-png("output/sample_clustering_clean.png", width = 6000, height = 2500, res = 300)
+png("temp/temp_WGCNA_clustering_clean1.png", width = 6000, height = 2500, res = 300)
 plot(sampleTree2, main = "Sample Clustering after cleaning Outliers", sub = "", xlab = "", cex.lab = 1, cex = 0.5)
 dev.off()
 
@@ -56,10 +56,11 @@ net <- blockwiseModules(datExpr_clean,
 moduleColors <- labels2colors(net$colors)
 
 # Plot dendrogram with module colors
+png("temp/temp_WGCNA_dendrogram1.png", width = 6000, height = 2500, res = 300)
 plotDendroAndColors(net$dendrograms[[1]], moduleColors[net$blockGenes[[1]]],
                     "Module Colors", dendroLabels = FALSE, hang = 0.03,
                     addGuide = TRUE, guideHang = 0.05)
-
+dev.off()
 # STEP 6: Relate modules to phenotype traits
 MEs <- net$MEs
 moduleTraitCor <- cor(MEs, datTraits, use = "p")
@@ -69,7 +70,7 @@ moduleTraitPvalue <- corPvalueStudent(moduleTraitCor, nSamples = nrow(datExpr_cl
 textMatrix <- paste0(signif(moduleTraitCor, 2), "\n(", signif(moduleTraitPvalue, 1), ")")
 dim(textMatrix) <- dim(moduleTraitCor)
 
-png("output/tmp_sample.png", width = 6000, height = 2500, res = 300)
+png("temp/temp_WGCNA_moduleTraitCorlabeledHeatmap1.png", width = 2000, height = 2200, res = 300)
 labeledHeatmap(Matrix = moduleTraitCor,
                xLabels = colnames(datTraits),
                yLabels = names(MEs),
