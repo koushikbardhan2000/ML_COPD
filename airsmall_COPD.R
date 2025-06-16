@@ -1,3 +1,6 @@
+# To clear the global environment in R
+# rm(list = ls()) # nolint
+
 ########################
 # Pre-processing starts
 ########################
@@ -351,8 +354,8 @@ head(deg_table[1:5, 1:5])
 
 # STEP 5: Volcano Plot
 deg_table$Significance <- "Not Significant"
-deg_table$Significance[deg_table$logFC > 1 & deg_table$adj.P.Val < 1] <- "Upregulated"
-deg_table$Significance[deg_table$logFC < -1 & deg_table$adj.P.Val < 1] <- "Downregulated"
+deg_table$Significance[deg_table$logFC > 1 & deg_table$adj.P.Val < 0.05] <- "Upregulated"
+deg_table$Significance[deg_table$logFC < -1 & deg_table$adj.P.Val < 0.05] <- "Downregulated"
 cat("Total No. of DEGs: ", sum(deg_table$Significance == "Upregulated") + sum(deg_table$Significance == "Downregulated"), "\n",
     "Upregulated: ", sum(deg_table$Significance == "Upregulated"), "\n",
     "Downregulated: ", sum(deg_table$Significance == "Downregulated"), "\n")
