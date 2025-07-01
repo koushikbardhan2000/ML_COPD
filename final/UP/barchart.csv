@@ -1,0 +1,41 @@
+﻿Category,Term,Count,Percentage
+Biological Process,signal transduction,12,16.66666667
+Biological Process,cell adhesion,10,13.88888889
+Biological Process,innate immune response,9,12.5
+Biological Process,inflammatory response,8,11.11111111
+Biological Process,positive regulation of cell migration,6,8.333333333
+Biological Process,positive regulation of apoptotic process,6,8.333333333
+Biological Process,cell surface receptor signaling pathway,6,8.333333333
+Biological Process,proteolysis,6,8.333333333
+Biological Process,positive regulation of tumor necrosis factor production,5,6.944444444
+Biological Process,antimicrobial humoral immune response mediated by antimicrobial peptide,5,6.944444444
+Cellular Components,extracellular region,31,43.05555556
+Cellular Components,extracellular space,30,41.66666667
+Cellular Components,plasma membrane,28,38.88888889
+Cellular Components,extracellular exosome,14,19.44444444
+Cellular Components,collagen-containing extracellular matrix,12,16.66666667
+Cellular Components,cell surface,9,12.5
+Cellular Components,collagen trimer,7,9.722222222
+Cellular Components,external side of plasma membrane,7,9.722222222
+Cellular Components,extracellular matrix,6,8.333333333
+Cellular Components,lysosome,6,8.333333333
+Molecular Function,protein binding,56,77.77777778
+Molecular Function,integrin binding,6,8.333333333
+Molecular Function,signaling receptor binding,6,8.333333333
+Molecular Function,collagen binding,5,6.944444444
+Molecular Function,extracellular matrix structural constituent,5,6.944444444
+Molecular Function,heparin binding,5,6.944444444
+Molecular Function,CCR chemokine receptor binding,4,5.555555556
+Molecular Function,chemokine activity,4,5.555555556
+Molecular Function,amyloid-beta binding,4,5.555555556
+Molecular Function,carbohydrate binding,4,5.555555556
+KEGG Pathway,Phagosome,10,13.88888889
+KEGG Pathway,Lipid and atherosclerosis,6,8.333333333
+KEGG Pathway,PPAR signaling pathway,5,6.944444444
+KEGG Pathway,Lysosome,5,6.944444444
+KEGG Pathway,Osteoclast differentiation,5,6.944444444
+KEGG Pathway,Pertussis,4,5.555555556
+KEGG Pathway,ECM-receptor interaction,4,5.555555556
+KEGG Pathway,Viral protein interaction with cytokine and cytokine receptor,4,5.555555556
+KEGG Pathway,Tuberculosis,4,5.555555556
+KEGG Pathway,Chemokine signaling pathway,4,5.555555556

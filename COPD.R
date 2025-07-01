@@ -1,3 +1,5 @@
+# To clear the global environment in R
+rm(list = ls())
 ########################
 # Pre-processing starts
 ########################
@@ -78,7 +80,7 @@ dim(final_annotated_data_unique)
 # write.csv(final_annotated_data_unique,"output/final_annotated_data_unique.csv")
 # final_annotated_data_unique <- read.csv("output/final_annotated_data_unique.csv", row.names = 1)
 head(final_annotated_data_unique[1:5, 1:5])
-
+dim(final_annotated_data_unique)
 
 # Preprocessing phenotype data
 # Load required libraries
@@ -173,7 +175,8 @@ phenotype <- all_annotated_samples_withIDs_unique_sorted[, c(1, 2, 4)]
 
 # remove Unknown samples
 phenotype <- phenotype[phenotype$phenotype != "Unknown", ]
-
+head(phenotype[1:3, 1:3])
+dim(phenotype)
 # write.csv(phenotype, "output/phenotype_final.csv", row.names = F) # nolint
 
 
@@ -205,6 +208,7 @@ expr_copd <- filtered_expression[, copd_ids]
 # Healthy vs COPD expression matrix
 expr_hnVScopd <- filtered_expression[,c(hn_ids,copd_ids)]
 # write.csv(expr_hnVScopd,"output/expr_hnVScopd.csv")
+# expr_hnVScopd <- read.csv("output/expr_hnVScopd.csv", row.names = 1)
 # Smoker vs COPD expression matrix
 expr_smokerVScopd <- filtered_expression[,c(smoker_ids,copd_ids)]
 # write.csv(expr_smokerVScopd,"output/expr_smokerVScopd.csv")
@@ -216,6 +220,11 @@ pheno_hnVScopd <- phenotype_sorted[phenotype_sorted$GSM_IDs %in% colnames(expr_h
 
 # Ensure phenotype vector matches the column order
 pheno_hnVScopd <- pheno_hnVScopd[match(colnames(expr_hnVScopd), pheno_hnVScopd$GSM_IDs), ]
+dim(pheno_hnVScopd)
+dim(expr_hnVScopd)
+# save the phenotype data
+# write.csv(pheno_hnVScopd, "output/pheno_hnVScopd.csv", row.names = FALSE)
+# pheno_hnVScopd <- read.csv("output/pheno_hnVScopd.csv", row.names = 1)
 #####################
 # Pre-processing end
 #####################
@@ -254,9 +263,10 @@ library(sva)
 
 # Batch correction
 batch_corrected <- ComBat(dat = as.matrix(expr_log2_norm), batch = pheno_hnVScopd$GSE_ID, par.prior = TRUE)
-# write.csv(batch_corrected, "output/batch_corrected.csv")
+# write.csv(batch_corrected, "output/batch_corrected.csv", row.names = TRUE)
 head(batch_corrected[1:5, 1:5])
-batch_corrected <- read.csv("output/batch_corrected.csv", row.names = 1)
+dim(batch_corrected)
+# batch_corrected <- read.csv("output/batch_corrected.csv", row.names = 1)
 
 # PCA Plot before normalization
 library(ggplot2)
@@ -268,7 +278,7 @@ pca_plot <- autoplot(prcomp(pca_data, scale. = TRUE),
          shape = 'phenotype') +
   theme_minimal() +
   ggtitle("PCA Plot: Samples by Phenotype")
-ggsave("temp/temp_PCA_beforeNormalization.png", plot = pca_plot, width = 8, height = 8, dpi = 300)
+ggsave("final/final_PCA_beforeNormalization.png", plot = pca_plot, width = 8, height = 8, dpi = 300)
 
 # PCA Plot before batch effect removal
 library(ggplot2)
@@ -280,7 +290,7 @@ pca_plot <- autoplot(prcomp(pca_data, scale. = TRUE),
          shape = 'phenotype') +
   theme_minimal() +
   ggtitle("PCA Plot: Samples by Phenotype")
-ggsave("temp/temp_PCA_beforeBatchCorrectionWithlogNormalized.png", plot = pca_plot, width = 8, height = 8, dpi = 300)
+ggsave("final/final_PCA_beforeBatchCorrectionWithlogNormalized.png", plot = pca_plot, width = 8, height = 8, dpi = 300)
 
 # PCA Plot After batch effect removal
 library(ggplot2)
@@ -292,7 +302,7 @@ pca_plot <- autoplot(prcomp(pca_data, scale. = TRUE),
          shape = 'phenotype') +
   theme_minimal() +
   ggtitle("PCA Plot: Samples by Phenotype")
-ggsave("temp/temp_PCA_afterBatchCorrection.png", plot = pca_plot, width = 8, height = 8, dpi = 300)
+ggsave("final/final_PCA_afterBatchCorrection.png", plot = pca_plot, width = 8, height = 8, dpi = 300)
 
 
 
@@ -340,6 +350,10 @@ deg_table$Significance[deg_table$logFC < -1 & deg_table$adj.P.Val < 0.05] <- "Do
 cat("Total No. of DEGs: ", sum(deg_table$Significance == "Upregulated") + sum(deg_table$Significance == "Downregulated"), "\n",
     "Upregulated: ", sum(deg_table$Significance == "Upregulated"), "\n",
     "Downregulated: ", sum(deg_table$Significance == "Downregulated"), "\n")
+
+# write.csv(deg_table[deg_table$Significance != "Not Significant", ], "temp/temp_DEG_table_full.csv", row.names = FALSE)
+# write.csv(deg_table[deg_table$Significance == "Upregulated", ], "temp/temp_DEG_table_Upregulated.csv", row.names = FALSE)
+# write.csv(deg_table[deg_table$Significance == "Downregulated", ], "temp/temp_DEG_table_Downregulated.csv", row.names = FALSE)
 
 png("temp/temp_volcano_plot.png", width = 1200, height = 1000, res = 150)
 ggplot(deg_table, aes(x = logFC, y = -log10(adj.P.Val), color = Significance)) +
@@ -425,6 +439,210 @@ dev.off()
 # Pearson correlation ends
 ############################
 
+####################################
+# Network Centrality Analysis starts
+####################################
+
+# install.packages("igraph")
+# install.packages("CINNA")
+
+library(igraph)
+library(CINNA)
+
+# Load the PPI data
+ppi <- read.delim("temp/temp_204DEGs_string_interactions_short.tsv", header = TRUE, sep = "\t")
+colnames(ppi)
+
+# Create an igraph object from the edge list
+ppi_graph <- graph_from_data_frame(ppi[, c("X.node1", "node2")], directed = FALSE)
+
+
+# Extract the largest connected component (giant component)
+# `clusters()` was deprecated in igraph 2.0.0. Thus use `components()` instead
+components <- components(ppi_graph)
+giant_component <- induced_subgraph(ppi_graph, which(components$membership == which.max(components$csize)))
+
+
+# Identify available centrality measures for the network
+available_measures <- proper_centralities(giant_component)
+
+# Calculate centralities for all valid measures
+centrality_scores <- calculate_centralities(giant_component)
+
+# Filter out zero-length centrality vectors
+centrality_scores_clean_list <- centrality_scores[sapply(centrality_scores, function(x) length(x) > 0)]
+
+# Convert remaining valid ones to data frame
+centrality_df <- as.data.frame(centrality_scores_clean_list)
+# write.csv(centrality_df, "temp/temp_centrality_scores.csv", row.names = TRUE)
+# centrality_df <- read.csv("temp/temp_centrality_scores.csv", row.names = 1)
+# Remove columns with NA values
+centrality_df_clean <- centrality_df[, colSums(is.na(centrality_df)) == 0]
+# write.csv(centrality_df_clean, "temp/temp_centrality_scores_clean.csv", row.names = TRUE)
+
+# Load library
+if (!require("factoextra")) install.packages("factoextra")
+library(factoextra)
+
+# Perform PCA
+pca_res <- prcomp(centrality_df_clean, scale. = TRUE)
+
+# Plot variable contributions
+png("temp/temp_PCA_Variable_Contributions_with_direction.png", width = 4000, height = 4000, res = 300)
+fviz_pca_var(pca_res, col.var = "contrib", repel = TRUE, axes = c(1, 2))
+dev.off()
+
+
+
+
+
+# Calculate contributions (squared loadings) of each centrality measure to PC1
+contributions <- abs(pca_res$rotation[, 1])^2
+contributions <- contributions / sum(contributions) * 100  # Convert to percentage
+
+# Create a data frame for plotting
+contrib_df <- data.frame(
+  Centrality = names(contributions),
+  Contribution = contributions
+)
+
+# Sort by contribution descending
+contrib_df <- contrib_df[order(-contrib_df$Contribution), ]
+
+# Bar chart
+png("temp/temp_PCA_Centrality_Contributions_to_PC1_barchart.png", width = 1200, height = 800, res = 150)
+ggplot(contrib_df, aes(x = reorder(Centrality, -Contribution), y = Contribution)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Centrality Contributions to PC1",
+       x = "Centrality Measure",
+       y = "Contribution (%)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+dev.off()
+
+
+# Get top 5 contributors to PC1
+top5_contributors <- head(contrib_df, 5)
+print(top5_contributors$Centrality)
+
+# selection pf Hub Genes
+# Step 1: Select top 5 centrality measures from the full centrality dataframe
+top5_measures <- top5_contributors$Centrality
+top5_scores <- centrality_df_clean[, top5_measures]
+
+# Step 2: Scale the centrality scores
+top5_scores_scaled <- scale(top5_scores)
+
+# Step 3: Calculate composite centrality score (mean of scaled values)
+composite_score <- rowMeans(top5_scores_scaled)
+
+# Step 4: Select hub genes with composite score > mean(composite_score)
+threshold <- mean(composite_score)
+hub_genes <- names(composite_score[composite_score > threshold])
+
+# Optionally: Create a data frame of hub genes and their composite scores
+hub_gene_df <- data.frame(
+  Gene = hub_genes,
+  CompositeScore = composite_score[hub_genes],
+  top5_scores = top5_scores[hub_genes, ]
+)
+
+# View or export
+names(hub_gene_df)
+length(hub_gene_df$Gene)
+
+
+# Order by CompositeScore descending
+hub_gene_df_ordered <- hub_gene_df[order(-hub_gene_df$CompositeScore), ]
+# Select top 20 hub genes
+top20_hub_genes <- head(hub_gene_df_ordered, 20)
+names(top20_hub_genes)
+length(top20_hub_genes$Gene)
+
+# Save the hub gene data frame
+# write.csv(hub_gene_df, "temp/temp_Hub_genes_fromCentralityMeasuresOnPPI-WithCompositeScoreAndIndividualCentralityScores.csv", row.names = FALSE)
+# read.csv("temp/temp_Hub_genes_fromCentralityMeasuresOnPPI-WithCompositeScoreAndIndividualCentralityScores.csv", row.names = 1)
+
+# Save the top 20 hub genes
+# write.csv(top20_hub_genes, "temp/temp_Hub_genes_Top_20_fromCentralityMeasuresOnPPI.csv", row.names = FALSE)
+# read.csv("temp/temp_Hub_genes_Top_20_fromCentralityMeasuresOnPPI.csv", row.names = 1)
+
+
+######################################## Don't remove below commented codes
+
+# # with only the top centrality measure
+# # Step 1: Select the top 1 centrality measure
+# top5_measures <- top5_contributors$Centrality
+# top5_scores <- centrality_df_clean[, top5_measures]
+# top1_measures <- top5_contributors$Centrality[1]  # Select the top measure
+# top1_scores <- data.frame("Genes" = rownames(top5_scores),"Top_measure" = top5_scores[, 1])  # Select the first column (top measure)
+# rownames(top1_scores) <- top1_scores$Genes  # Set rownames to gene names
+# # Step 2: Compute threshold (mean)
+# threshold <- mean(top1_scores$Top_measure)
+
+# # Step 3: Identify hub genes with score > mean
+# hub_genes <- row.names.data.frame(top1_scores[top1_scores$Top_measure > threshold,])
+
+# # Step 4: Create data frame of hub genes and their centrality scores
+# hub_gene_df <- data.frame(
+#   Gene = top1_scores$Genes[top1_scores$Top_measure > threshold],
+#   CentralityScore = top1_scores$Top_measure[top1_scores$Top_measure > threshold]
+# )
+
+# # View first few hub genes and their count
+# head(hub_gene_df)
+# length(hub_gene_df$Gene)
+
+
+# hub_gene_df_compositeScore <- read.csv("temp/temp_Hub_genes_composite_score_fromCentralityMeasuresOnPPI.csv", row.names = 1)
+# head(hub_gene_df_compositeScore)
+# length(hub_gene_df_compositeScore$Gene)
+
+######################################## Don't remove above commented codes
+
+
+
+# # Get top contributing measure
+# var_contrib <- get_pca_var(pca_res)$contrib
+# mean_contrib <- rowMeans(var_contrib[, 1:2])
+# top_5_measure <- names(sort(mean_contrib, decreasing = TRUE)[1:5])
+# cat("Top 5 contributing centrality:", top_5_measure, "\n")
+# top_measure <- names(sort(mean_contrib, decreasing = TRUE)[1])
+
+# # Extract and filter hub genes (HUB genes not identified in this step)
+# # Print column names
+# colnames(centrality_df_clean)
+
+# # Print the top_measure value
+# print(top_measure)
+
+
+
+
+
+# # Top 20 genes ranked from centrality measures were saved as CSV files in the temp directory
+# # these files are generated by cytoscape using the cytohubban plugin and starts with "20"
+# # Merge top 20 genes from each centrality measure
+# top20 <- list.files("temp/", pattern = ".csv", full.names = T)
+# top20 <- top20[1:5]
+
+# merged_data <- lapply(top20, function(file) {
+#   df <- read.csv(file, header = TRUE)
+#   df
+# })
+
+# final_merged_data <- Reduce(function(x, y) merge(x, y, by = "Name", all = TRUE), merged_data)
+# final_merged_data <- final_merged_data[!is.na(final_merged_data$Rank.x),]
+# final_merged_data <- final_merged_data[!is.na(final_merged_data$Score),]
+# dim(final_merged_data)
+# # Save the final merged data to a CSV file
+# write.csv(final_merged_data$Name, "temp/listofHubGenes.csv", row.names = FALSE, quote = FALSE)
+
+##################################
+# Network Centrality Analysis Ends
+##################################
+
+
 ##############
 # LASSO starts
 ##############
@@ -439,20 +657,20 @@ library(randomForest)
 library(caret)
 library(doParallel)
 
-# STEP 1: Select top 50 DEGs by adjusted p-value
-top_degs <- deg_table[deg_table$Significance != "Not Significant", ]
-top_gene_ids <- top_degs$Gene
+# # STEP 1: Select top 50 DEGs by adjusted p-value
+# top_degs <- deg_table[deg_table$Significance != "Not Significant", ]
+# top_gene_ids <- top_degs$Gene
+
+# STEP 1: Select the hub genes from the centrality analysis
+top20_hub_genes <- read.csv("temp/temp_Hub_genes_Top_20_fromCentralityMeasuresOnPPI.csv")
+hub_genes <- top20_hub_genes$Gene
 
 # STEP 2: Extract expression data for top DEGs
-expr_top_degs <- batch_corrected_pheno_hnVScopd[top_gene_ids, ]
+expr_top_hub <- batch_corrected[hub_genes, ]
 
 # Transpose expression data for glmnet (samples x genes)
-x <- t(expr_top_degs)
+x <- t(expr_top_hub)
 y <- factor(pheno_hnVScopd$phenotype)
-
-# # Transpose expression data for glmnet (samples x genes)
-# x <- t(batch_corrected)
-# y <- factor(pheno_hnVScopd$phenotype)
 
 # Binary classification: 0 = Healthy Non-Smoker, 1 = Smoker with COPD
 y_bin <- ifelse(y == "Smoker with COPD", 1, 0)
@@ -465,8 +683,20 @@ set.seed(123)
 cv_lasso <- cv.glmnet(x_scaled, y_bin, alpha = 1, family = "binomial", nfolds = 10)
 
 # Plot CV results
+# Plot with lambda.min and lambda.1se indicated
 png("temp/temp_LASSO_CV_plot1.png", width = 1200, height = 1200, res = 150)
 plot(cv_lasso)
+
+# Add vertical lines for lambda.min and lambda.1se
+abline(v = log(cv_lasso$lambda.min), col = "red", lty = 2, lwd = 2)
+abline(v = log(cv_lasso$lambda.1se), col = "blue", lty = 2, lwd = 2)
+
+# Add text labels
+legend("topright",
+       legend = c(paste0("lambda.min = ", signif(cv_lasso$lambda.min, 1)),
+                  paste0("lambda.1se = ", signif(cv_lasso$lambda.1se, 1))),
+       col = c("red", "blue"),
+       lty = 2, lwd = 2, bty = "n")
 dev.off()
 
 # Fit LASSO model (alpha = 1 means LASSO)
@@ -476,8 +706,14 @@ lasso_fit <- glmnet(x_scaled, y_bin, alpha = 1, family = "binomial")
 png("temp/temp_LASSO_Coefficient_Profiles1.png", width = 1200, height = 1200, res = 150)
 plot(lasso_fit, xvar = "lambda", label = TRUE, lwd = 1.5)
 dev.off()
+
+
 # Best lambda
 best_lambda <- cv_lasso$lambda.min
+cat("Best lambda (min):", best_lambda, "\n")
+# Best lambda (1se)
+best_lambda_1se <- cv_lasso$lambda.1se
+cat("Best lambda (1se):", best_lambda_1se, "\n")
 
 # Coefficients at best lambda
 lasso_coef <- coef(cv_lasso, s = best_lambda)
@@ -486,7 +722,10 @@ selected_genes <- selected_genes[!selected_genes %in% "(Intercept)"]
 
 # Expression matrix with selected genes
 lasso_expr <- x[, selected_genes]
+head(lasso_expr[1:5, 1:5])
 
+write.csv(lasso_expr, "temp/temp_lasso_selected_genes_expression.csv", row.names = TRUE)
+# read.csv("temp/temp_lasso_selected_genes_expression.csv", row.names = 1)
 ###############
 # Random Forest
 ###############
@@ -527,8 +766,9 @@ final_rf <- randomForest(phenotype ~ .,
                          importance = TRUE)
 
 # Plot variable importance
+png("temp/temp_RF_Variable_Importance1.png", width = 1200, height = 1200, res = 150)
 varImpPlot(final_rf, type = 1, main = "Top Gene Importance (MeanDecreaseAccuracy)")
-
+dev.off()
 
 library(caret)
 
@@ -578,8 +818,9 @@ cat("AUROC      :", round(auc_score, 4), "\n")
 
 # Plot ROC curve
 png("temp/temp_AUROC_RF1.png", width = 1200, height = 1200, res = 150)
-plot(roc_obj, col = "blue", lwd = 2, main = "ROC Curve - Random Forest")
+plot(roc_obj, col = "blue", lwd = 2, main = "ROC Curve - Random Forest", legacy.axes = FALSE)
 abline(a = 0, b = 1, lty = 2, col = "gray")
+text(0.6, 0.2, labels = paste0("AUC = ", round(auc_score, 4)), col = "black", cex = 1.5)
 dev.off()
 
 
@@ -842,7 +1083,7 @@ for (model_name in names(models)) {
     AUROC = as.numeric(auc_val)
   ))
 }
-
+print(results)
 ########################
 # Plot Performance Metrics
 ########################
@@ -864,97 +1105,4 @@ print(p)
 # Save plot
 ggsave("temp/temp_integrated_model_comparison1.png", plot = p, width = 12, height = 12, dpi = 300)
 
-####################################
-# Network Centrality Analysis starts
-####################################
 
-# install.packages("igraph")
-# install.packages("CINNA")
-
-library(igraph)
-library(CINNA)
-
-# Load the PPI data
-ppi <- read.delim("temp/string_interactions_short.tsv", header = TRUE, sep = "\t")
-colnames(ppi)
-
-# Create an igraph object from the edge list
-ppi_graph <- graph_from_data_frame(ppi[, c("X.node1", "node2")], directed = FALSE)
-
-
-# Extract the largest connected component (giant component)
-components <- clusters(ppi_graph)
-giant_component <- induced_subgraph(ppi_graph, which(components$membership == which.max(components$csize)))
-
-
-# Identify available centrality measures for the network
-available_measures <- proper_centralities(giant_component)
-
-# Calculate centralities for all valid measures
-centrality_scores <- calculate_centralities(giant_component)
-
-# Filter out zero-length centrality vectors
-centrality_scores_clean_list <- centrality_scores[sapply(centrality_scores, function(x) length(x) > 0)]
-
-# Convert remaining valid ones to data frame
-centrality_df <- as.data.frame(centrality_scores_clean_list)
-
-
-# Remove columns with NA values
-centrality_df_clean <- centrality_df[, colSums(is.na(centrality_df)) == 0]
-
-# Load library
-if (!require("factoextra")) install.packages("factoextra")
-library(factoextra)
-
-# Perform PCA
-pca_res <- prcomp(centrality_df_clean, scale. = TRUE)
-
-# Plot variable contributions
-fviz_pca_var(pca_res, col.var = "contrib", repel = TRUE, axes = c(1, 2))
-
-# Get top contributing measure
-var_contrib <- get_pca_var(pca_res)$contrib
-mean_contrib <- rowMeans(var_contrib[, 1:2])
-top_5_measure <- names(sort(mean_contrib, decreasing = TRUE)[1:5])
-cat("Top 5 contributing centrality:", top_measure, "\n")
-top_measure <- names(sort(mean_contrib, decreasing = TRUE)[1])
-
-# Extract and filter hub genes (HUB genes not identified in this step)
-# Print column names
-# colnames(centrality_df_clean)
-
-# # Print the top_measure value
-# print(top_measure)
-
-# top_scores <- centrality_df_clean[[top_measure]]
-# # Define 90th percentile cutoff
-# quantile_cutoff <- quantile(top_scores, 0.9)
-# # Select top 10%
-# hub_genes <- names(top_scores[top_scores >= quantile_cutoff])
-# # Output
-# print(hub_genes)
-# write.table(hub_genes, "hub_genes.txt", row.names = FALSE, col.names = FALSE, quote = FALSE)
-
-
-# Top 20 genes ranked from centrality measures were saved as CSV files in the temp directory
-# these files are generated by cytoscape using the cytohubban plugin and starts with "20"
-# Merge top 20 genes from each centrality measure
-top20 <- list.files("temp/", pattern = ".csv", full.names = T)
-top20 <- top20[1:5]
-
-merged_data <- lapply(top20, function(file) {
-  df <- read.csv(file, header = TRUE)
-  df
-})
-
-final_merged_data <- Reduce(function(x, y) merge(x, y, by = "Name", all = TRUE), merged_data)
-final_merged_data <- final_merged_data[!is.na(final_merged_data$Rank.x),]
-final_merged_data <- final_merged_data[!is.na(final_merged_data$Score),]
-dim(final_merged_data)
-# Save the final merged data to a CSV file
-write.csv(final_merged_data$Name, "temp/listofHubGenes.csv", row.names = FALSE, quote = FALSE)
-
-##################################
-# Network Centrality Analysis Ends
-##################################
