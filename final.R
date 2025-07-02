@@ -790,6 +790,36 @@ head(lasso_expr[1:5, 1:5])
 
 # write.csv(lasso_expr, "final/final_lasso_selected_genes_expression.csv", row.names = TRUE)
 # lasso_expr <- read.csv("final/final_lasso_selected_genes_expression.csv", row.names = 1)
+
+
+# ================================ preprocessing for the network analysis with 13 selected genes
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(readr)
+
+# Read the CSV file
+# Replace "your_file.csv" with your actual file path
+data <- read_csv("final/Experimental_functional_annotation_table_on_13_genes.csv")
+
+
+# Transform: split the Genes column and unnest rows
+transformed_data <- data %>%
+  separate_rows(Genes, sep = ",\\s*") %>%   # expand rows
+  mutate(Genes = trimws(Genes)) %>%         # clean whitespace
+  select(Genes, Term, Category)             # reorder columns
+
+# View the transformed data in R console
+print(transformed_data)
+
+# Write the transformed data to a new CSV file
+write_csv(transformed_data, "C:/Users/koush/Downloads/Experimental_transformed_table_for_network_analysis.csv")
+
+# ================================ preprocessing for the network analysis with 13 selected genes
+
+
+
+# ================================ ML medels starts here
 ###############
 # Random Forest
 ###############
@@ -1065,7 +1095,7 @@ png("final/final_AUROC_XGB1.png", width = 1200, height = 1200, res = 150)
 plot(xgb_roc, col = "darkorange", lwd = 2, main = "ROC Curve - XGBoost")
 abline(a = 0, b = 1, lty = 2, col = "gray")
 dev.off()
-
+# ================================ ML medels ends here
 
 
 ###############
@@ -1583,5 +1613,4 @@ ggplot(perf_df, aes(x = Model, y = Accuracy, fill = Set)) +
   theme_minimal(base_size = 14) +
   theme(legend.position = "top")
 ggsave("final/final_Model_Performance_Comparison_on_accuarcy.png", width = 8, height = 8, dpi = 300)
-
 
