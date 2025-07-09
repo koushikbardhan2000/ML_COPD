@@ -1,31 +1,3 @@
-﻿Category,Term,Count,%
-Biological Process,flagellated sperm motility,9,8.333333333
-Biological Process,heart development,6,5.555555556
-Biological Process,positive regulation of cell population proliferation,6,5.555555556
-Biological Process,epithelial cilium movement involved in extracellular fluid movement,5,4.62962963
-Biological Process,determination of left/right symmetry,4,3.703703704
-Biological Process,positive regulation of cytosolic calcium ion concentration,4,3.703703704
-Biological Process,cilium assembly,4,3.703703704
-Biological Process,outer dynein arm assembly,3,2.777777778
-Biological Process,cellular response to calcium ion,3,2.777777778
-Biological Process,epithelial cell differentiation,3,2.777777778
-Cellular Components,plasma membrane,35,32.40740741
-Cellular Components,cytoplasm,34,31.48148148
-Cellular Components,extracellular region,25,23.14814815
-Cellular Components,extracellular exosome,18,16.66666667
-Cellular Components,cilium,9,8.333333333
-Cellular Components,motile cilium,8,7.407407407
-Cellular Components,apical plasma membrane,8,7.407407407
-Cellular Components,ciliary basal body,7,6.481481481
-Cellular Components,cytoskeleton,7,6.481481481
-Cellular Components,microtubule,6,5.555555556
-Molecular Function,serine-type endopeptidase inhibitor activity,4,3.703703704
-Molecular Function,iron ion binding,4,3.703703704
-Molecular Function,scaffold protein binding,3,2.777777778
-Molecular Function,chloride channel activity,3,2.777777778
-Molecular Function,carnitine transmembrane transporter activity,2,1.851851852
-Molecular Function,intracellularly calcium-gated chloride channel activity,2,1.851851852
-KEGG Pathway,Neuroactive ligand-receptor interaction,6,5.555555556
-KEGG Pathway,Metabolism of xenobiotics by cytochrome P450,4,3.703703704
-KEGG Pathway,Calcium signaling pathway,4,3.703703704
-KEGG Pathway,Drug metabolism - cytochrome P450,3,2.777777778
+version https://git-lfs.github.com/spec/v1
+oid sha256:22c02da6be87ca3c1039b754384c5738989e117b543e53fe6ee0dd94787f4776
+size 1920

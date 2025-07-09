@@ -1,14 +1,3 @@
-"logFC","Gene","Significance"
-2.40132661289377,"CCL2","Upregulated"
-1.29029221543862,"FCN1","Upregulated"
-1.05411264662985,"SPP1","Upregulated"
-1.11502217461526,"CD163","Upregulated"
-1.32655496944682,"TREM2","Upregulated"
-1.30482544226873,"MMP12","Upregulated"
--1.38735328795317,"KRT5","Downregulated"
-1.04812635332809,"PPARG","Upregulated"
-1.01450203786152,"LPL","Upregulated"
--1.02984167623569,"LTF","Downregulated"
--1.15816429023113,"DNAI1","Downregulated"
--1.00242330138321,"TEKT1","Downregulated"
--1.07071584206981,"SCGB1A1","Downregulated"
+version https://git-lfs.github.com/spec/v1
+oid sha256:aab9ddb6862c4c30ed004f8384e5dc4006b92d35bb026bf53185c91fe34fddb9
+size 546
