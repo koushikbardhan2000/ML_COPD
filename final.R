@@ -813,7 +813,27 @@ transformed_data <- data %>%
 print(transformed_data)
 
 # Write the transformed data to a new CSV file
-write_csv(transformed_data, "C:/Users/koush/Downloads/Experimental_transformed_table_for_network_analysis.csv")
+write_csv(transformed_data, "final/Experimental_transformed_table_for_network_analysis.csv")
+
+
+
+lasso_expr <- read.csv("final/final_lasso_selected_genes_expression.csv", row.names = 1)
+cat(names(lasso_expr))
+full_DEG_table <- read.csv("final/final_DEG_table_full.csv")
+selected <- subset(full_DEG_table, Gene %in% c("CCL2","SPP1","CD163","LTF","MMP12", 
+                                               "TREM2","PPARG","KRT5","SCGB1A1", 
+                                               "TEKT1","DNAI1","FCN1","LPL"))
+
+selected <- subset(selected, c("logFC","Gene", "Significance"))
+write.csv(selected, "final/logFC_of_13_selected_genes.csv", row.names = F)
+
+
+read.csv("final/Experimental_transformed_table_for_network_analysis.csv") -> transformed_table
+
+
+merged_transformed_table <- merge(transformed_table, selected, by.x = "Genes", by.y = "Gene")
+View(merged_transformed_table)
+write.csv(merged_transformed_table, "final/Experimental_merged_transformed_table_for_network_analysis.csv",row.names = F)
 
 # ================================ preprocessing for the network analysis with 13 selected genes
 
@@ -1120,16 +1140,30 @@ library(tidyr)
 #####################
 # Input Preprocessing
 #####################
+lasso_expr <- read.csv("final/final_lasso_selected_genes_expression.csv", row.names = 1)
+pheno_hnVScopd <- read.csv("final/pheno_hnVScopd.csv")
+y <- factor(pheno_hnVScopd$phenotype)
+# make y binary
+y_bin <- ifelse(y == "Smoker with COPD", 1, 0)
+# Convert phenotype to factor with two levels
+rf_df <- data.frame(lasso_expr, phenotype = factor(y))
 
-# Assuming `rf_df` and `best_genes` are already available in environment
 
-x_data <- rf_df[, best_genes]
+
+x_data <- rf_df[, 1:13]  # Select only the gene expression columns instead of best_genes
 y_data <- rf_df$phenotype
 
-# Ensure phenotype labels match caret requirements
-y_data <- factor(y_data)
-levels(y_data) <- make.names(levels(y_data))  # e.g., "Healthy.Non.Smoker", "Smoker.with.COPD"
+train_index <- createDataPartition(y_bin, p = 0.7, list = FALSE)
+x_train <- lasso_expr[train_index, ]
+x_test  <- lasso_expr[-train_index, ]
+y_train <- y[train_index]
+y_test  <- y[-train_index]
 
+y_train <- factor(y_train)
+levels(y_train) <- make.names(levels(y_train))
+
+y_test <- factor(y_test)
+levels(y_test) <- make.names(levels(y_test))
 ########################
 # Train ML Models
 ########################
@@ -1141,16 +1175,16 @@ ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 5,
 models <- list()
 
 set.seed(123)
-models$RF <- train(x = x_data, y = y_data, method = "rf", trControl = ctrl, metric = "ROC")
+models$RF <- train(x = x_train, y = y_train, method = "rf", trControl = ctrl, metric = "ROC")
 
 set.seed(123)
-models$SVM <- train(x = x_data, y = y_data, method = "svmRadial", trControl = ctrl, metric = "ROC")
+models$SVM <- train(x = x_train, y = y_train, method = "svmRadial", trControl = ctrl, metric = "ROC")
 
 set.seed(123)
-models$LogReg <- train(x = x_data, y = y_data, method = "glm", family = "binomial", trControl = ctrl, metric = "ROC")
+models$LogReg <- train(x = x_train, y = y_train, method = "glm", family = "binomial", trControl = ctrl, metric = "ROC")
 
 set.seed(123)
-models$XGB <- train(x = x_data, y = y_data, method = "xgbTree", trControl = ctrl, metric = "ROC")
+models$XGB <- train(x = x_train, y = y_train, method = "xgbTree", trControl = ctrl, metric = "ROC")
 
 ########################
 # Collect Performance Metrics
@@ -1194,28 +1228,78 @@ for (model_name in names(models)) {
   ))
 }
 print(results)
+
+# ============================ Test the models on the test set
+########################
+# Evaluate on Test Set
+########################
+
+results_test <- data.frame(Model = character(), Accuracy = numeric(), Sensitivity = numeric(),
+                           Specificity = numeric(), F1 = numeric(), AUROC = numeric())
+
+for (model_name in names(models)) {
+  model <- models[[model_name]]
+  
+  # Predict class labels
+  pred_labels <- predict(model, x_test)
+  
+  # Predict probabilities
+  prob_preds <- predict(model, x_test, type = "prob")
+  
+  # Probabilities for positive class ("Smoker.with.COPD")
+  prob_copd <- prob_preds$Smoker.with.COPD
+  
+  # Confusion matrix on test set
+  cm <- confusionMatrix(pred_labels, y_test, positive = "Smoker.with.COPD")
+  
+  # ROC/AUC
+  if (length(unique(y_test)) == 2) {
+    roc_obj <- roc(response = y_test, predictor = prob_copd,
+                   levels = c("Healthy.Non.Smoker", "Smoker.with.COPD"), direction = "<")
+    auc_val <- auc(roc_obj)
+  } else {
+    auc_val <- NA
+  }
+  
+  # Store metrics
+  results_test <- rbind(results_test, data.frame(
+    Model = model_name,
+    Accuracy = cm$overall["Accuracy"],
+    Sensitivity = cm$byClass["Sensitivity"],
+    Specificity = cm$byClass["Specificity"],
+    F1 = cm$byClass["F1"],
+    AUROC = as.numeric(auc_val)
+  ))
+}
+
+cat("\n===== TEST SET PERFORMANCE =====\n")
+print(results_test)
+
+
 ########################
 # Plot Performance Metrics
 ########################
+results$Set <- "CV"
+results_test$Set <- "Test"
 
-results_long <- results %>%
-  pivot_longer(-Model, names_to = "Metric", values_to = "Score")
+combined_results <- bind_rows(results, results_test)
+combined_results_long <- combined_results %>%
+  pivot_longer(cols = c(Accuracy, Sensitivity, Specificity, F1, AUROC),
+               names_to = "Metric", values_to = "Score")
 
-p <- ggplot(results_long, aes(x = fct_reorder(Model, Score), y = Score, fill = Model)) +
-  geom_bar(stat = "identity", position = position_dodge(), width = 0.7) +
-  facet_wrap(~Metric, scales = "free_y") +
+p_combined <- ggplot(combined_results_long, aes(x = fct_reorder(Model, Score), y = Score, fill = Set)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+  facet_wrap(~Metric, scales = "free_y", labeller = labeller(Metric = label_value)) +
   theme_minimal(base_size = 14) +
-  labs(title = "Performance Comparison of ML Models",
-       x = "Model", y = "Score") +
-  scale_fill_brewer(palette = "Set2") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  labs(title = "Performance Comparison: Cross-Validation vs Test Set",
+       x = "Model", y = "Score", fill = "Dataset") +
+  scale_fill_brewer(palette = "Set1") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(face = "bold", size = 14))
 
-print(p)
+print(p_combined)
 
-# Save plot
-ggsave("final/final_integrated_model_comparison1.png", plot = p, width = 12, height = 12, dpi = 300)
-
-
+ggsave("final/final_integrated_model_comparison_with_train_and_test.png", plot = p_combined, width = 12, height = 12, dpi = 300)
 ################################################### performancs evaluation on only training data
 
 
@@ -1305,12 +1389,12 @@ rf_test_roc  <- roc(ifelse(y_test == "Smoker with COPD", 1, 0), rf_test_pred)
 # Plot
 png("temp/temp_AUROC_RF_Train_Test.png", width = 1200, height = 1200, res = 150)
 plot(rf_train_roc, col = "darkblue", lwd = 2, main = "Random Forest ROC - Train vs Test")
-plot(rf_test_roc, col = "blue", lwd = 2, add = TRUE)
+plot(rf_test_roc, col = "#000000", lwd = 2, add = TRUE)
 abline(a = 0, b = 1, col = "gray", lty = 2)
 legend("bottomright", legend = c(
   paste0("Train AUC = ", round(auc(rf_train_roc), 4)),
   paste0("Test AUC = ", round(auc(rf_test_roc), 4))),
-  col = c("darkblue", "blue"), lwd = 2)
+  col = c("darkblue", "#000000"), lwd = 2)
 dev.off()
 
 
@@ -1355,12 +1439,12 @@ svm_test_roc  <- roc(ifelse(y_test == "Smoker with COPD", 1, 0), svm_test_prob)
 # Plot
 png("temp/temp_AUROC_SVM_Train_Test.png", width = 1200, height = 1200, res = 150)
 plot(svm_train_roc, col = "red", lwd = 2, main = "SVM ROC Curve - Train vs Test")
-plot(svm_test_roc, col = "blue", lwd = 2, add = TRUE)
+plot(svm_test_roc, col = "#000000", lwd = 2, add = TRUE)
 abline(a = 0, b = 1, col = "gray", lty = 2)
 legend("bottomright", legend = c(
   paste0("Train AUC = ", round(auc(svm_train_roc), 4)),
   paste0("Test AUC = ", round(auc(svm_test_roc), 4))),
-  col = c("red", "blue"), lwd = 2)
+  col = c("red", "#000000"), lwd = 2)
 dev.off()
 
 
@@ -1403,12 +1487,12 @@ glm_test_roc  <- roc(ifelse(y_test == "Smoker with COPD", 1, 0), glm_test_prob)
 # Plot
 png("temp/temp_AUROC_GLM_Train_Test.png", width = 1200, height = 1200, res = 150)
 plot(glm_train_roc, col = "darkgreen", lwd = 2, main = "Logistic Regression ROC - Train vs Test")
-plot(glm_test_roc, col = "blue", lwd = 2, add = TRUE)
+plot(glm_test_roc, col = "#000000", lwd = 2, add = TRUE)
 abline(a = 0, b = 1, col = "gray", lty = 2)
 legend("bottomright", legend = c(
   paste0("Train AUC = ", round(auc(glm_train_roc), 4)),
   paste0("Test AUC = ", round(auc(glm_test_roc), 4))),
-  col = c("darkgreen", "blue"), lwd = 2)
+  col = c("darkgreen", "#000000"), lwd = 2)
 dev.off()
 
 
@@ -1466,12 +1550,12 @@ xgb_test_roc  <- roc(response = ifelse(xgb_test_df$phenotype == "COPD", 1, 0), p
 # Plot
 png("temp/temp_AUROC_XGB_Train_Test.png", width = 1200, height = 1200, res = 150)
 plot(xgb_train_roc, col = "orange", lwd = 2, main = "XGBoost ROC - Train vs Test")
-plot(xgb_test_roc, col = "blue", lwd = 2, add = TRUE)
+plot(xgb_test_roc, col = "#000000", lwd = 2, add = TRUE)
 abline(a = 0, b = 1, col = "gray", lty = 2)
 legend("bottomright", legend = c(
   paste0("Train AUC = ", round(auc(xgb_train_roc), 4)),
   paste0("Test AUC = ", round(auc(xgb_test_roc), 4))),
-  col = c("orange", "blue"), lwd = 2)
+  col = c("orange", "#000000"), lwd = 2)
 dev.off()
 ###################################
 # Combined ROC plots
