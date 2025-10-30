@@ -1,3 +1,5 @@
+# This file is 1st part of the COPD analysis using LASSO and various ML models.
+# After this file, you should have run the COPD_new_LASSO_ML.R script to generate the required datasets.
 # To clear the global environment in R
 rm(list = ls())
 ########################
