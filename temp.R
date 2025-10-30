@@ -186,3 +186,241 @@ ggsave("final/final_integrated_model_comparison_with_train_and_test.png", plot =
 
 
 
+
+# ================================ this portion is made for Maitree and has been sent to her by WP 
+####################################
+# Network Centrality Analysis starts
+####################################
+
+# install.packages("igraph")
+# install.packages("CINNA")
+
+library(igraph)
+library(CINNA)
+
+# Load the PPI data
+ppi <- read.delim("DEGs_string_interactions_short.tsv", header = TRUE, sep = "\t")
+colnames(ppi)
+
+# Create an igraph object from the edge list
+ppi_graph <- graph_from_data_frame(ppi[, c("X.node1", "node2")], directed = FALSE)
+
+
+# Extract the largest connected component (giant component)
+# `clusters()` was deprecated in igraph 2.0.0. Thus use `components()` instead
+components <- components(ppi_graph)
+giant_component <- induced_subgraph(ppi_graph, which(components$membership == which.max(components$csize)))
+
+
+# Identify available centrality measures for the network
+available_measures <- proper_centralities(giant_component)
+
+# Calculate centralities for all valid measures
+centrality_scores <- calculate_centralities(giant_component)
+
+# Filter out zero-length centrality vectors
+centrality_scores_clean_list <- centrality_scores[sapply(centrality_scores, function(x) length(x) > 0)]
+
+# Convert remaining valid ones to data frame
+centrality_df <- as.data.frame(centrality_scores_clean_list)
+# write.csv(centrality_df, "final/final_centrality_scores.csv", row.names = TRUE)
+# centrality_df <- read.csv("final/final_centrality_scores.csv", row.names = 1)
+# Remove columns with NA values
+centrality_df_clean <- centrality_df[, colSums(is.na(centrality_df)) == 0]
+# write.csv(centrality_df_clean, "final/final_centrality_scores_clean.csv", row.names = TRUE)
+
+# Load library
+if (!require("factoextra")) install.packages("factoextra")
+library(factoextra)
+
+# Perform PCA
+pca_res <- prcomp(centrality_df_clean, scale. = TRUE)
+
+# Plot variable contributions
+png("PCA_Variable_Contributions_with_direction.png", width = 4000, height = 4000, res = 300)
+fviz_pca_var(pca_res, col.var = "contrib", repel = TRUE, axes = c(1, 2))
+dev.off()
+
+
+
+
+
+# Calculate contributions (squared loadings) of each centrality measure to PC1
+contributions <- abs(pca_res$rotation[, 1])^2
+contributions <- contributions / sum(contributions) * 100  # Convert to percentage
+
+# Create a data frame for plotting
+contrib_df <- data.frame(
+  Centrality = names(contributions),
+  Contribution = contributions
+)
+
+# Sort by contribution descending
+contrib_df <- contrib_df[order(-contrib_df$Contribution), ]
+
+# Bar chart
+# Mark top 5 contributors
+contrib_df$Color <- ifelse(rank(-contrib_df$Contribution) <= 5, "Top5", "Other")
+
+# Plot with color grouping
+png("PCA_Centrality_Contributions_to_PC1_barchart.png", width = 4000, height = 4000, res = 300)
+ggplot(contrib_df, aes(x = reorder(Centrality, -Contribution), y = Contribution, fill = Color)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Top5" = "#a90f0f", "Other" = "#276aa0")) +
+  labs(x = "Centrality Measure",
+       y = "Contribution (%)",
+       fill = "Legend") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+dev.off()
+
+
+
+# Get top 5 contributors to PC1
+top5_contributors <- head(contrib_df, 5)
+print(top5_contributors$Centrality)
+
+# selection pf Hub Genes
+# Step 1: Select top 5 centrality measures from the full centrality dataframe
+top5_measures <- top5_contributors$Centrality
+top5_scores <- centrality_df_clean[, top5_measures]
+
+# Step 2: Scale the centrality scores
+top5_scores_scaled <- scale(top5_scores)
+
+# Step 3: Calculate composite centrality score (mean of scaled values)
+composite_score <- rowMeans(top5_scores_scaled)
+
+# Step 4: Select hub genes with composite score > mean(composite_score)
+threshold <- mean(composite_score)
+hub_genes <- names(composite_score[composite_score > threshold])
+
+# Optionally: Create a data frame of hub genes and their composite scores
+hub_gene_df <- data.frame(
+  Gene = hub_genes,
+  CompositeScore = composite_score[hub_genes],
+  top5_scores = top5_scores[hub_genes, ]
+)
+
+# View or export
+names(hub_gene_df)
+length(hub_gene_df$Gene)
+dim(hub_gene_df)
+head(hub_gene_df[1:5, 1:5])
+# Order by CompositeScore descending
+hub_gene_df_ordered <- hub_gene_df[order(-hub_gene_df$CompositeScore), ]
+# Select top 20 hub genes
+top20_hub_genes <- head(hub_gene_df_ordered, 20)
+names(top20_hub_genes)
+length(top20_hub_genes$Gene)
+
+
+##############
+# LASSO starts
+##############
+# Load required libraries
+library(glmnet)
+library(randomForest)
+library(caret)
+library(doParallel)
+
+
+# STEP 1: Select the hub genes from the centrality analysis
+hub_genes <- top20_hub_genes$Gene
+
+# STEP 2: Extract expression data for top DEGs
+expr_top_hub <- batch_corrected[hub_genes, ]
+
+# Transpose expression data for glmnet (samples x genes)
+x <- t(expr_top_hub)
+y <- factor(pheno_hnVScopd$phenotype)
+
+# Binary classification: 0 = Healthy Non-Smoker, 1 = Smoker with COPD
+y_bin <- ifelse(y == "AM", 1, 0)
+
+# Standardize features
+# x_scaled <- scale(x)
+
+# Create cross-validation folds
+set.seed(123)
+cv_lasso <- cv.glmnet(x, y_bin, alpha = 1, family = "binomial", nfolds = 10) # x_scaled not used here
+
+# Plot CV results
+# Plot with lambda.min and lambda.1se indicated
+png("LASSO_CV_plot.png", width = 4000, height = 4000, res = 300)
+plot(cv_lasso)
+
+# Add vertical lines for lambda.min and lambda.1se
+abline(v = log(cv_lasso$lambda.min), col = "red", lty = 2, lwd = 2)
+abline(v = log(cv_lasso$lambda.1se), col = "blue", lty = 2, lwd = 2)
+
+# Add text labels
+legend("bottomright",
+       legend = c(paste0("lambda.min = ", signif(cv_lasso$lambda.min, 1)),
+                  paste0("lambda.1se = ", signif(cv_lasso$lambda.1se, 1))),
+       col = c("red", "blue"),
+       lty = 2, lwd = 2, bty = "n")
+dev.off()
+
+# Fit LASSO model (alpha = 1 means LASSO)
+lasso_fit <- glmnet(x, y_bin, alpha = 1, family = "binomial")
+
+# Plot coefficient profiles
+png("LASSO_Coefficient_Profiles.png", width = 4000, height = 4000, res = 300)
+plot(lasso_fit, xvar = "lambda", label = TRUE, lwd = 1.5)
+dev.off()
+
+
+# Best lambda
+best_lambda <- cv_lasso$lambda.min
+cat("Best lambda (min):", best_lambda, "\n")
+# Best lambda (1se)
+best_lambda_1se <- cv_lasso$lambda.1se
+cat("Best lambda (1se):", best_lambda_1se, "\n")
+
+# Coefficients at best lambda
+lasso_coef <- coef(cv_lasso, s = best_lambda)
+selected_genes <- rownames(lasso_coef)[lasso_coef[, 1] != 0]
+selected_genes <- selected_genes[!selected_genes %in% "(Intercept)"]
+cat("Selected genes at lambda.min:", length(selected_genes), "\n")
+
+# Expression matrix with selected genes
+lasso_expr <- x[, selected_genes]
+head(lasso_expr[1:5, 1:5])
+
+###############
+# Random Forest to find the best genes
+###############
+
+# Convert phenotype to factor with two levels
+rf_df <- data.frame(lasso_expr, phenotype = factor(y))
+
+# Set up repeated RF modeling
+set.seed(123)
+n_vars <- seq_along(selected_genes) # 1:length(selected_genes)
+error_rates <- numeric(length(n_vars))
+
+for (i in n_vars) {
+  rf_model <- randomForest(phenotype ~ ., 
+                           data = rf_df[, c(1:i, ncol(rf_df))],
+                           ntree = 500,
+                           importance = TRUE)
+  error_rates[i] <- 1 - rf_model$confusion["AM", "AM"] / sum(rf_model$confusion["AM", ])
+}
+
+# Plot error rate vs number of variables
+png("error_rate_vs_genes.png", width = 1200, height = 1200, res = 150)
+plot(n_vars, error_rates, type = "b", col = "darkgreen", 
+     xlab = "Number of Top LASSO-selected Genes",
+     ylab = "Random Forest Error Rate",
+     main = "Error Rate vs. Number of Genes")
+dev.off()
+# Optional: Identify minimum error configuration
+min_error_index <- which.min(error_rates)
+cat("Minimum error rate:", error_rates[min_error_index], "using", min_error_index, "genes.\n")
+
+
+# Train final model with optimal number of genes
+best_genes <- selected_genes[1:min_error_index]
+
+# after this point run the ML models on the best_genes and validate the results
